@@ -1,0 +1,32 @@
+# infra/
+
+Local development infrastructure and (later) deployment code.
+
+## Local stack — docker-compose
+
+Services:
+
+| Service  | Port(s)      | Credentials (dev)            | Purpose |
+|----------|--------------|------------------------------|---------|
+| Postgres | 5432         | `myreport` / `myreport`      | Primary database |
+| Redis    | 6379         | —                            | BullMQ queues, rate limiting, cache |
+| MinIO    | 9000 / 9001  | `minioadmin` / `minioadmin`  | S3-compatible storage (console on :9001) |
+
+### Usage
+
+```sh
+pnpm dev:up      # start services in background
+pnpm dev:down    # stop services (keeps volumes)
+pnpm dev:logs    # tail logs
+pnpm dev:reset   # stop + wipe volumes + restart
+```
+
+Credentials above are **dev only**. See `.env.example` at the repo root for the variables the apps will consume.
+
+## Postgres init scripts
+
+Files under `postgres/init/` run on first container start (fresh volume). They create extensions and any baseline roles. To re-run them after changes, use `pnpm dev:reset`.
+
+## Terraform (deferred)
+
+Production infrastructure code will live in `infra/terraform/` once we get close to deploying. Not authored yet.
