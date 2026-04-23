@@ -1,33 +1,35 @@
 # Local development stack: Postgres 16, Redis 7, MinIO (S3-compatible).
+# Credentials and ports come from the repo-root .env file (see .env.example).
+# Defaults below are dev-only — override in .env for anything sensitive.
 # Use via `pnpm dev:up` / `pnpm dev:down` from the repo root.
-name: myreport
+name: ${COMPOSE_PROJECT_NAME:-myreport}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: myreport-postgres
+    container_name: ${COMPOSE_PROJECT_NAME:-myreport}-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: myreport
-      POSTGRES_PASSWORD: myreport
-      POSTGRES_DB: myreport
+      POSTGRES_USER: ${POSTGRES_USER:-myreport}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myreport}
+      POSTGRES_DB: ${POSTGRES_DB:-myreport}
     ports:
-      - "5433:5432"   # Host 5433 to avoid clashing with a local Postgres on 5432.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myreport -d myreport"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myreport} -d ${POSTGRES_DB:-myreport}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: myreport-redis
+    container_name: ${COMPOSE_PROJECT_NAME:-myreport}-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -39,14 +41,14 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: myreport-minio
+    container_name: ${COMPOSE_PROJECT_NAME:-myreport}-minio
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
     command: ["server", "/data", "--console-address", ":9001"]
@@ -56,21 +58,25 @@ services:
       timeout: 5s
       retries: 10
 
-  # One-shot job: create the bucket on startup so the API can use it right away.
+  # One-shot: create the bucket on startup so the API can use it right away.
   minio-init:
     image: minio/mc:latest
-    container_name: myreport-minio-init
+    container_name: ${COMPOSE_PROJECT_NAME:-myreport}-minio-init
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-myreport}
     entrypoint:
       - /bin/sh
       - -c
       - |
-        mc alias set local http://minio:9000 minioadmin minioadmin &&
-        mc mb --ignore-existing local/myreport &&
-        mc anonymous set download local/myreport &&
-        echo "bucket ready"
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing "local/$${S3_BUCKET}" &&
+        mc anonymous set download "local/$${S3_BUCKET}" &&
+        echo "bucket $${S3_BUCKET} ready"
     restart: "no"
 
 volumes:

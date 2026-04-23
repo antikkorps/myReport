@@ -21,7 +21,7 @@ pnpm dev:logs    # tail logs
 pnpm dev:reset   # stop + wipe volumes + restart
 ```
 
-Credentials above are **dev only**. See `.env.example` at the repo root for the variables the apps will consume.
+Credentials and host ports are driven by the repo-root `.env` (copied from `.env.example`). The defaults listed above are **dev fallbacks baked into the compose file** — override `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, and the `*_HOST_PORT` variables in `.env` if you need different values or if ports clash on your host.
 
 ## Postgres init scripts
 
