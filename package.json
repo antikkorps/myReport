@@ -25,5 +25,11 @@
     "dev:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "dev:reset": "docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d",
     "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/node": "^24.12.2",
+    "turbo": "^2.9.6",
+    "typescript": "^6.0.3"
   }
 }

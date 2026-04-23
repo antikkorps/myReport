@@ -8,7 +8,7 @@ Services:
 
 | Service  | Port(s)      | Credentials (dev)            | Purpose |
 |----------|--------------|------------------------------|---------|
-| Postgres | 5432         | `myreport` / `myreport`      | Primary database |
+| Postgres | **5433** (host) → 5432 (container) | `myreport` / `myreport` | Primary database. Host port shifted to avoid clashing with a local Postgres instance. |
 | Redis    | 6379         | —                            | BullMQ queues, rate limiting, cache |
 | MinIO    | 9000 / 9001  | `minioadmin` / `minioadmin`  | S3-compatible storage (console on :9001) |
 

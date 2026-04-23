@@ -15,8 +15,8 @@ Single source of truth pour suivre l'avancement. Mis à jour à chaque fin d'ét
 
 - [x] **Cadrage & ADR 0001** — doc d'architecture archivée + ADR des choix de stack. *(2026-04-23)*
 - [x] **Scaffold monorepo** — pnpm workspaces, Turborepo, Biome 2, tsconfig strict, arborescence `apps/` + `packages/` + `docs/` + `infra/`. *(2026-04-23)*
-- [x] **Infra locale** — `infra/docker-compose.yml` (Postgres 16 + Redis 7 + MinIO), scripts `pnpm dev:up/down/logs/reset`, init SQL (extensions). *(2026-04-23)*
-- [ ] **CI de base** — GitHub Actions : lint + typecheck + test sur PR. Dependabot activé.
+- [x] **Infra locale** — `infra/docker-compose.yml` (Postgres 16 port hôte 5433 + Redis 7 + MinIO), scripts `pnpm dev:up/down/logs/reset`, init SQL (extensions). *(2026-04-23)*
+- [x] **CI de base** — GitHub Actions : lint + typecheck + test sur PR, audit deps séparé, Dependabot hebdo (npm + github-actions), PR template. *(2026-04-23)*
 - [ ] **Pre-commit hooks** — husky + lint-staged (Biome check sur fichiers stagés).
 
 ## Phase 1 — Fondations data & auth
