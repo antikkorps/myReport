@@ -21,7 +21,7 @@ Single source of truth pour suivre l'avancement. Mis à jour à chaque fin d'ét
 
 ## Phase 1 — Fondations data & auth
 
-- [ ] **Package `db`** — Drizzle config, schéma initial (`tenants`, `users`, `memberships`, `sessions`, `mission_members`), migrations, seed dev.
+- [~] **Package `db`** — Drizzle config + schéma initial (`tenants`, `users`, `memberships`, `sessions`, `missions` minimal, `mission_members`), migration `0000_init` appliquée, seed dev (tenant demo) idempotent. Tests d'intégration à ajouter avec l'étape RLS. *(2026-04-24)*
 - [ ] **RLS** — policies sur toutes les tables `tenant_id`, rôle `app_user` (pas de BYPASSRLS), rôle `app_admin` dédié au super-admin. Tests d'isolation obligatoires.
 - [ ] **Package `shared-schemas`** — TypeBox pour les DTOs API + helpers conversion Zod.
 - [ ] **API squelette** — Fastify 5, plugins tenant context, auth (JWT access + refresh httpOnly), rate limit, route `/me`, OpenAPI auto-généré.

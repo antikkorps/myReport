@@ -15,7 +15,8 @@
       "!**/.turbo",
       "!**/coverage",
       "!**/*.generated.ts",
-      "!**/pnpm-lock.yaml"
+      "!**/pnpm-lock.yaml",
+      "!**/migrations"
     ]
   },
   "formatter": {
@@ -43,7 +44,8 @@
         "noUnusedVariables": "error"
       },
       "complexity": {
-        "noBannedTypes": "error"
+        "noBannedTypes": "error",
+        "useLiteralKeys": "off"
       }
     }
   },
@@ -60,5 +62,17 @@
       "enabled": true,
       "indentWidth": 2
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/src/{seed,migrate}.ts", "**/scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
 }

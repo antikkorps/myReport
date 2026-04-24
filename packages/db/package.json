@@ -1,0 +1,38 @@
+{
+  "name": "@myreport/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Drizzle schema, migrations, and database client for myReport",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema": {
+      "types": "./src/schema/index.ts",
+      "default": "./src/schema/index.ts"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "default": "./src/client.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file=../../.env src/migrate.ts",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "node --env-file=../../.env src/seed.ts",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.1",
+    "postgres": "3.4.8",
+    "uuidv7": "1.1.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.8"
+  }
+}
