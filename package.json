@@ -20,10 +20,10 @@
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "test:e2e": "turbo run test:e2e",
-    "dev:up": "docker compose -f infra/docker-compose.yml up -d",
-    "dev:down": "docker compose -f infra/docker-compose.yml down",
-    "dev:logs": "docker compose -f infra/docker-compose.yml logs -f",
-    "dev:reset": "docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d",
+    "dev:up": "docker compose --env-file .env -f infra/docker-compose.yml up -d",
+    "dev:down": "docker compose --env-file .env -f infra/docker-compose.yml down",
+    "dev:logs": "docker compose --env-file .env -f infra/docker-compose.yml logs -f",
+    "dev:reset": "docker compose --env-file .env -f infra/docker-compose.yml down -v && docker compose --env-file .env -f infra/docker-compose.yml up -d",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
