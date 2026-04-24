@@ -17,7 +17,7 @@ Single source of truth pour suivre l'avancement. Mis à jour à chaque fin d'ét
 - [x] **Scaffold monorepo** — pnpm workspaces, Turborepo, Biome 2, tsconfig strict, arborescence `apps/` + `packages/` + `docs/` + `infra/`. *(2026-04-23)*
 - [x] **Infra locale** — `infra/docker-compose.yml` (Postgres 16 port hôte 5433 + Redis 7 + MinIO), scripts `pnpm dev:up/down/logs/reset`, init SQL (extensions). *(2026-04-23)*
 - [x] **CI de base** — GitHub Actions : lint + typecheck + test sur PR, audit deps séparé, Dependabot hebdo (npm + github-actions), PR template. *(2026-04-23)*
-- [ ] **Pre-commit hooks** — husky + lint-staged (Biome check sur fichiers stagés).
+- [x] **Pre-commit hooks** — husky 9.1.7 + lint-staged 16.2.7, Biome `check --write` sur fichiers stagés, bloque les erreurs non auto-fixables. *(2026-04-24)*
 
 ## Phase 1 — Fondations data & auth
 
