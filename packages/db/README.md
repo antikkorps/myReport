@@ -71,9 +71,48 @@ pnpm db:seed       # Insert the demo tenant
 All scripts read `DATABASE_URL` from the repo-root `.env` file (via
 Node's native `--env-file` flag).
 
+## Row-Level Security
+
+Migration `0001_rls.sql` installs two roles and a policy per table.
+
+- `app_user` (`NOLOGIN NOBYPASSRLS`) — the role used by all regular
+  request traffic. The Fastify tenant-context plugin (Phase 1, next
+  step) opens a transaction and runs, once per request:
+
+  ```sql
+  SET LOCAL ROLE app_user;
+  SET LOCAL app.current_user_id   = '<uuid>';
+  SET LOCAL app.current_tenant_id = '<uuid>'; -- may be '' pre-tenant-pick
+  ```
+
+- `app_admin` (`NOLOGIN BYPASSRLS`) — reserved for super-admin flows
+  and a small set of bootstrap writes (tenant creation, user invite)
+  where RLS would block the legitimate operation. The API layer
+  escalates only for those specific statements, never the whole
+  request.
+
+All tenant-scoped tables use `FORCE ROW LEVEL SECURITY` so the table
+owner is also subject to policies. Migrations still run as the owner
+outside of the `app_user` role, so DDL is not affected.
+
+RLS handles **isolation**; the CASL abilities in `@myreport/rbac`
+handle **authorisation** inside a tenant.
+
+## Tests
+
+Integration tests live under `tests/` and use Testcontainers to spin
+up a disposable Postgres 16 container per test file.
+
+```sh
+pnpm test       # one-shot run
+pnpm test:watch # re-run on change
+```
+
+Docker (or a compatible runtime) must be reachable. The tests are
+independent of the `pnpm dev:up` compose stack.
+
 ## Next steps (tracked in BACKLOG.md)
 
-- RLS policies + dedicated `app_user` / `app_admin` DB roles.
 - Expand `missions` (Phase 3): template binding, client ref, deadlines,
   auditee token.
 - Seed users + memberships once the auth module lands.
