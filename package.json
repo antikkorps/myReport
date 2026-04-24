@@ -24,11 +24,19 @@
     "dev:down": "docker compose -f infra/docker-compose.yml down",
     "dev:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "dev:reset": "docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,vue,css}": [
+      "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true"
+    ]
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@types/node": "^25.6.0",
+    "husky": "9.1.7",
+    "lint-staged": "16.2.7",
     "turbo": "^2.9.6",
     "typescript": "^6.0.3"
   }

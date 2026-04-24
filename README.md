@@ -43,6 +43,12 @@ pnpm lint && pnpm typecheck && pnpm test
 
 All three must pass. See [`CLAUDE.md`](./CLAUDE.md) for the full quality bar.
 
+A Husky `pre-commit` hook runs `lint-staged`, which executes
+`biome check --write` on staged files. Auto-fixable issues are
+rewritten and re-staged; remaining errors block the commit.
+The hook is installed automatically via the `prepare` script on
+`pnpm install`.
+
 ## Documentation
 
 - [`docs/architecture.md`](./docs/architecture.md) — high-level architecture
