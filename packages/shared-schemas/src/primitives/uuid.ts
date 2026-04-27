@@ -9,7 +9,6 @@ const UUID_REGEX = new RegExp(UUID_PATTERN);
 export const TBUuid = Type.String({
   format: 'uuid',
   pattern: UUID_PATTERN,
-  $id: 'Uuid',
 });
 
 export const ZUuid = z.string().regex(UUID_REGEX, { message: 'invalid uuid' });
