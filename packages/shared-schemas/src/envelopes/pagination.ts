@@ -1,13 +1,10 @@
 import { type Static, type TSchema, Type } from '@sinclair/typebox';
 import { type ZodType, z } from 'zod';
 
-export const TBPaginationQuery = Type.Object(
-  {
-    page: Type.Integer({ minimum: 1, default: 1 }),
-    pageSize: Type.Integer({ minimum: 1, maximum: 200, default: 20 }),
-  },
-  { $id: 'PaginationQuery' },
-);
+export const TBPaginationQuery = Type.Object({
+  page: Type.Integer({ minimum: 1, default: 1 }),
+  pageSize: Type.Integer({ minimum: 1, maximum: 200, default: 20 }),
+});
 
 export const ZPaginationQuery = z.object({
   page: z.number().int().min(1).default(1),
@@ -16,15 +13,12 @@ export const ZPaginationQuery = z.object({
 
 export type PaginationQuery = Static<typeof TBPaginationQuery>;
 
-export const TBPaginationMeta = Type.Object(
-  {
-    page: Type.Integer({ minimum: 1 }),
-    pageSize: Type.Integer({ minimum: 1 }),
-    total: Type.Integer({ minimum: 0 }),
-    totalPages: Type.Integer({ minimum: 0 }),
-  },
-  { $id: 'PaginationMeta' },
-);
+export const TBPaginationMeta = Type.Object({
+  page: Type.Integer({ minimum: 1 }),
+  pageSize: Type.Integer({ minimum: 1 }),
+  total: Type.Integer({ minimum: 0 }),
+  totalPages: Type.Integer({ minimum: 0 }),
+});
 
 export const ZPaginationMeta = z.object({
   page: z.number().int().min(1),

@@ -10,7 +10,6 @@ const ISO_DATETIME_REGEX = new RegExp(ISO_DATETIME_PATTERN);
 export const TBIsoDateTime = Type.String({
   format: 'date-time',
   pattern: ISO_DATETIME_PATTERN,
-  $id: 'IsoDateTime',
 });
 
 export const ZIsoDateTime = z

@@ -16,6 +16,10 @@
     "./envelopes": {
       "types": "./src/envelopes/index.ts",
       "default": "./src/envelopes/index.ts"
+    },
+    "./dtos": {
+      "types": "./src/dtos/index.ts",
+      "default": "./src/dtos/index.ts"
     }
   },
   "scripts": {

@@ -9,7 +9,6 @@ export const TBEmail = Type.String({
   format: 'email',
   pattern: EMAIL_PATTERN,
   maxLength: 320,
-  $id: 'Email',
 });
 
 export const ZEmail = z
