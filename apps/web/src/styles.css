@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* PrimeVue v4 emits its component styles into a `primevue` CSS layer
+ * (configured in main.ts). To keep PrimeVue's component styles
+ * authoritative while Tailwind's utilities still win where applied
+ * deliberately, we declare the layer order explicitly: PrimeVue lands
+ * between Tailwind's base reset and its utilities. */
+@layer theme, base, primevue, utilities;
+
+@theme {
+  --font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body,
+#app {
+  min-height: 100vh;
+}
+
+body {
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+}

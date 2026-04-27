@@ -16,7 +16,8 @@
       "!**/coverage",
       "!**/*.generated.ts",
       "!**/pnpm-lock.yaml",
-      "!**/migrations"
+      "!**/migrations",
+      "!apps/web/src/**/*.css"
     ]
   },
   "formatter": {
@@ -70,6 +71,17 @@
         "rules": {
           "suspicious": {
             "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.vue"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
           }
         }
       }

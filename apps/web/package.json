@@ -1,0 +1,36 @@
+{
+  "name": "@myreport/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vue 3 + Vite + PrimeVue front-end for myReport",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@myreport/shared-schemas": "workspace:*",
+    "@primevue/themes": "4.5.4",
+    "pinia": "3.0.4",
+    "primeicons": "7.0.0",
+    "primevue": "4.5.4",
+    "vue": "3.5.27",
+    "vue-router": "4.6.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.18",
+    "@vitejs/plugin-vue": "6.0.3",
+    "@vue/test-utils": "2.4.6",
+    "@vue/tsconfig": "0.8.1",
+    "jsdom": "27.4.0",
+    "tailwindcss": "4.1.18",
+    "vite": "7.3.2",
+    "vitest": "4.1.5",
+    "vue-tsc": "3.2.4"
+  }
+}

@@ -29,7 +29,9 @@ Single source of truth pour suivre l'avancement. Mis à jour à chaque fin d'ét
 
 ## Phase 2 — Front & flux admin
 
-- [ ] **Front squelette** — Vue 3 + Vite, PrimeVue Aura, Tailwind v4, vue-router, Pinia, layout responsive (mobile testé dès le départ).
+- [x] **Front squelette** — Vue 3 + Vite 7 + PrimeVue 4 (Aura) + Tailwind v4 + vue-router + Pinia. Layout `AppShell` mobile-first 375 px (topbar + drawer hamburger < lg, sidebar permanente lg+). Vues `Home`/`Login`/`NotFound` (lazy). Login utilise `ZLoginRequest` de `shared-schemas` (form non câblé sur l'API — étape suivante). Vite proxy `/api → :3000`. Tests Vitest + @vue/test-utils + jsdom (2 verts). Override Biome pour `.vue` (Biome ne parse pas les templates). *(2026-04-27)*
+
+  Bonus : `infra/docker-compose.yml` — MinIO écoute désormais sur 9010 à l'intérieur du container (et plus 9000), ce qui libère totalement le port 9000 pour d'autres stacks Docker locaux.
 - [ ] **Client API typé** — dérivé des schémas TypeBox (pas de `fetch` nu).
 - [ ] **Login + /me** — UX auth complète (access short + refresh silent), gestion expiration.
 - [ ] **Admin tenants** (super_admin) — création cabinet + premier `cabinet_admin`.

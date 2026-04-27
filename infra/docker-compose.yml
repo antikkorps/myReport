@@ -47,13 +47,16 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_API_HOST_PORT:-9010}:9010"
       - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
-    command: ["server", "/data", "--console-address", ":9001"]
+    # Listen on 9010 inside the container so port 9000 stays free for
+    # other local stacks. Keep host + container ports identical to make
+    # docker-compose port mappings self-explanatory.
+    command: ["server", "/data", "--address", ":9010", "--console-address", ":9001"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:9010/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -73,7 +76,7 @@ services:
       - /bin/sh
       - -c
       - |
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc alias set local http://minio:9010 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
         mc mb --ignore-existing "local/$${S3_BUCKET}" &&
         mc anonymous set download "local/$${S3_BUCKET}" &&
         echo "bucket $${S3_BUCKET} ready"
