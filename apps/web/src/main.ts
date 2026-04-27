@@ -1,9 +1,9 @@
-import Aura from '@primevue/themes/aura';
 import { createPinia } from 'pinia';
 import PrimeVue from 'primevue/config';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { router } from './router/index.ts';
+import { NoirSlatePreset } from './theme/preset.ts';
 import './styles.css';
 
 const app = createApp(App);
@@ -12,7 +12,7 @@ app.use(createPinia());
 app.use(router);
 app.use(PrimeVue, {
   theme: {
-    preset: Aura,
+    preset: NoirSlatePreset,
     options: {
       // PrimeVue's Tailwind integration uses .dark on <html>; keeping
       // dark mode opt-in via class lets us toggle from a future user

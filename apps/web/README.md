@@ -6,7 +6,7 @@ Vue 3 + Vite front-end for myReport.
 
 - **Vue 3** + `<script setup lang="ts">`
 - **Vite 7** with `@vitejs/plugin-vue` and `@tailwindcss/vite`
-- **PrimeVue 4** with the **Aura** preset, dark mode opt-in via `.dark` on `<html>`
+- **PrimeVue 4** with a customised **Aura** preset (Noir primary on Zinc + Slate surface, see `src/theme/preset.ts`), dark mode opt-in via `.dark` on `<html>`
 - **Tailwind v4** with `@import "tailwindcss"` (no config file, theme via `@theme {}`)
 - **vue-router 4** (memory history in tests, web history in app)
 - **Pinia 3** for state
