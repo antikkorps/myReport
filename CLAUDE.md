@@ -61,7 +61,8 @@ CI rejoue tout et bloque le merge si ça casse. Pas de `--no-verify`, pas de ski
 ### Dépendances
 
 - **Toujours latest stable** à l'installation (`pnpm add pkg@latest`). Valable runtime, dev, images Docker (tags explicites et récents, jamais `latest` en prod mais versions majeures actuelles).
-- **Dependabot + `pnpm audit`** en CI. Patch/minor : auto-merge si tests verts. Major : PR dédiée, revue manuelle, ADR si breaking.
+- **Délai anti-supply-chain : 90 jours minimum** entre la publication d'une version et son installation. On vise la dernière version stable **dont la date de publication est ≥ 90 jours**. Motif : plusieurs attaques de supply chain récentes (packages npm compromis, mainteneurs piratés) sont détectées dans les premières semaines. Ce délai laisse le temps à la communauté et aux scanners de repérer les versions malveillantes. Applicable à **toutes** les dépendances (runtime + dev), sauf patch de sécurité critique explicitement motivé. Vérifier avec `npm view <pkg> time` avant `pnpm add`.
+- **Dependabot + `pnpm audit`** en CI. Patch/minor : auto-merge si tests verts **et** version ≥ 90 jours. Major : PR dédiée, revue manuelle, ADR si breaking.
 - **Pas de dépendance abandonnée** (dernier commit > 18 mois) sans justification écrite.
 - **`pnpm outdated`** checké à chaque début de sprint/itération. Mise à niveau groupée en chore dédié.
 - Node.js : LTS le plus récent (actuellement **24**). Postgres : version stable la plus récente compatible avec les extensions utilisées (16+).
