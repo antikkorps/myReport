@@ -8,6 +8,7 @@ import fastifySwaggerUi from '@fastify/swagger-ui';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Env } from './config/env.ts';
+import abilityPlugin from './plugins/ability.ts';
 import authPlugin from './plugins/auth.ts';
 import dbPlugin from './plugins/db.ts';
 import dbContextPlugin from './plugins/dbContext.ts';
@@ -77,6 +78,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     secret: env.JWT_ACCESS_SECRET,
     accessTokenTtl: env.JWT_ACCESS_TTL,
   });
+  await app.register(abilityPlugin);
 
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -94,6 +96,5 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   });
   await app.register(meRoute);
 
-  await app.ready();
   return app;
 }
