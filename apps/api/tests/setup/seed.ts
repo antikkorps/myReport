@@ -44,3 +44,69 @@ export async function seedUser(url: string): Promise<Seed> {
     await sql.end({ timeout: 5 });
   }
 }
+
+export interface SuperAdminSeed {
+  userId: string;
+  email: string;
+  password: string;
+}
+
+export interface OrphanSeed {
+  userId: string;
+  email: string;
+  password: string;
+}
+
+// Seeds a regular (non-super-admin) user with no membership. Used to
+// verify the login route still rejects with 403 NO_TENANT for users
+// that need a tenant but don't have one.
+export async function seedOrphanUser(url: string): Promise<OrphanSeed> {
+  const sql = postgres(url, { max: 1, prepare: false });
+  try {
+    const userId = uuidv7();
+    const email = `orphan-${userId.slice(-12)}@example.test`;
+    const password = 'correct-horse-battery-staple';
+    const passwordHash = await argon2.hash(password);
+
+    await sql`SET ROLE app_admin`;
+    await sql`
+      insert into users (id, email, display_name, is_super_admin)
+      values (${userId}, ${email}, 'Orphan User', false)
+    `;
+    await sql`
+      insert into auth_identities (id, user_id, provider, secret_hash, email_at_link)
+      values (${uuidv7()}, ${userId}, 'password', ${passwordHash}, ${email})
+    `;
+
+    return { userId, email, password };
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+// Seeds a super_admin user with NO tenant membership. Used to exercise
+// the platform-ops login path where the access token carries
+// `tenantId: null`.
+export async function seedSuperAdmin(url: string): Promise<SuperAdminSeed> {
+  const sql = postgres(url, { max: 1, prepare: false });
+  try {
+    const userId = uuidv7();
+    const email = `super-${userId.slice(-12)}@example.test`;
+    const password = 'correct-horse-battery-staple';
+    const passwordHash = await argon2.hash(password);
+
+    await sql`SET ROLE app_admin`;
+    await sql`
+      insert into users (id, email, display_name, is_super_admin)
+      values (${userId}, ${email}, 'Super Admin', true)
+    `;
+    await sql`
+      insert into auth_identities (id, user_id, provider, secret_hash, email_at_link)
+      values (${uuidv7()}, ${userId}, 'password', ${passwordHash}, ${email})
+    `;
+
+    return { userId, email, password };
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
