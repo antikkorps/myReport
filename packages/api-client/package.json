@@ -1,0 +1,26 @@
+{
+  "name": "@myreport/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed HTTP client for the myReport API, derived from @myreport/shared-schemas",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@myreport/shared-schemas": "workspace:*",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "vitest": "4.1.5"
+  }
+}

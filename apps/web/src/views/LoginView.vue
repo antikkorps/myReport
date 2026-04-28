@@ -6,21 +6,27 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Password from 'primevue/password';
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '../stores/auth.ts';
 
-// Placeholder login screen — wires the shared-schemas Zod validator
-// against the form payload but does not call the API yet. The real
-// flow lands in the next backlog item ("Login + /me").
 const email = ref('');
 const password = ref('');
 const submitted = ref(false);
+const router = useRouter();
+const auth = useAuthStore();
 
 const validation = computed(() => {
   const result = ZLoginRequest.safeParse({ email: email.value, password: password.value });
   return result.success ? null : (result.error.issues[0]?.message ?? 'Champ invalide');
 });
 
-const onSubmit = (): void => {
+const onSubmit = async (): Promise<void> => {
   submitted.value = true;
+  if (validation.value) return;
+  const ok = await auth.login({ email: email.value, password: password.value });
+  if (ok) {
+    await router.push({ name: 'home' });
+  }
 };
 </script>
 
@@ -48,7 +54,15 @@ const onSubmit = (): void => {
           <Message v-if="submitted && validation" severity="error" :closable="false">
             {{ validation }}
           </Message>
-          <Button type="submit" label="Se connecter" :disabled="!email || !password" />
+          <Message v-if="auth.error" severity="error" :closable="false">
+            {{ auth.error }}
+          </Message>
+          <Button
+            type="submit"
+            label="Se connecter"
+            :loading="auth.loading"
+            :disabled="!email || !password || auth.loading"
+          />
         </form>
       </template>
     </Card>
