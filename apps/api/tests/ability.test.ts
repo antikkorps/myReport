@@ -32,9 +32,11 @@ describe('ability plugin', () => {
     };
     app = await buildApp(env);
 
+    // `update` (not `manage`) since cabinet_admin loses `manage:Tenant`
+    // — Tenant create/delete is super_admin-only.
     app.get(
       '/_probe/can',
-      { preHandler: [app.requireAuth, app.requireAbility('manage', 'Tenant')] },
+      { preHandler: [app.requireAuth, app.requireAbility('update', 'Tenant')] },
       async () => ({ ok: true }),
     );
     await app.ready();
@@ -59,7 +61,7 @@ describe('ability plugin', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('lets cabinet_admin pass the manage:Tenant gate', async () => {
+  it('lets cabinet_admin pass the update:Tenant gate', async () => {
     // Seeded user is cabinet_admin of their tenant.
     const token = await login();
     const res = await app.inject({

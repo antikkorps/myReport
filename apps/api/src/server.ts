@@ -17,6 +17,7 @@ import loginRoute from './routes/auth/login.ts';
 import logoutRoute from './routes/auth/logout.ts';
 import refreshRoute from './routes/auth/refresh.ts';
 import meRoute from './routes/me.ts';
+import tenantsRoutes from './routes/tenants.ts';
 
 export type AppInstance = FastifyInstance & {
   // Re-export the TypeBox provider so route files can rely on schema
@@ -100,6 +101,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     isProd: env.NODE_ENV === 'production',
   });
   await app.register(meRoute);
+  await app.register(tenantsRoutes);
 
   return app;
 }

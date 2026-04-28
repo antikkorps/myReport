@@ -14,9 +14,11 @@ vi.mock('../src/api/client.ts', () => {
     logout: vi.fn(),
   };
   const me = { get: vi.fn() };
+  const tenants = { create: vi.fn(), list: vi.fn() };
   const client: ApiClient = {
     auth,
     me,
+    tenants,
     ensureRefresh: vi.fn().mockResolvedValue('token'),
   };
   const scheduler: RefreshScheduler = {

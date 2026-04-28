@@ -58,7 +58,15 @@ const onLogout = async (): Promise<void> => {
           Accueil
         </RouterLink>
         <RouterLink
-          v-else
+          v-if="auth.user?.isSuperAdmin"
+          to="/admin/tenants"
+          class="px-3 py-2 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+          @click="drawerOpen = false"
+        >
+          Administration
+        </RouterLink>
+        <RouterLink
+          v-if="!auth.isAuthenticated"
           to="/login"
           class="px-3 py-2 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
           @click="drawerOpen = false"

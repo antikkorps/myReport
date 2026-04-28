@@ -56,7 +56,11 @@ export function defineAbilitiesFor(ctx: AbilityContext): AppAbility {
     // Full control over the tenant's own data. RLS still scopes the
     // query layer so we don't repeat tenantId conditions everywhere —
     // these abilities only narrow what's already tenant-bound.
-    can('manage', 'Tenant', { id: ctx.tenantId } as never);
+    //
+    // Tenant CRUD is intentionally restricted: cabinet_admin manages
+    // content inside their tenant, not the tenant entity itself.
+    // Creating or deleting Tenant rows is super_admin-only.
+    can(['read', 'update'], 'Tenant', { id: ctx.tenantId } as never);
     can('manage', 'User');
     can('manage', 'Membership', { tenantId: ctx.tenantId } as never);
     can('manage', 'Mission', { tenantId: ctx.tenantId } as never);
