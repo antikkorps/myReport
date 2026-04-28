@@ -16,14 +16,13 @@ const citext = customType<{ data: string }>({
   dataType: () => 'citext',
 });
 
+// Credentials are NOT stored on this table — see `auth_identities` for
+// per-provider login data (password, Google, Microsoft, ...).
 export const users = pgTable(
   'users',
   {
     id: primaryId(),
     email: citext().notNull(),
-    // Argon2id hash; never stored in plaintext. Produced by the API layer
-    // (this package does not depend on argon2 to keep it side-effect-free).
-    passwordHash: text().notNull(),
     displayName: text().notNull(),
     // Global flag for platform operators. Super-admins are NOT scoped to
     // a tenant and bypass tenant-bound UI, but still hit RLS via the

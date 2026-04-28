@@ -27,8 +27,12 @@ export async function seedUser(url: string): Promise<Seed> {
       values (${tenantId}, 'Test Tenant', ${`tenant-${tenantId.slice(-8)}`})
     `;
     await sql`
-      insert into users (id, email, password_hash, display_name)
-      values (${userId}, ${email}, ${passwordHash}, 'Test User')
+      insert into users (id, email, display_name)
+      values (${userId}, ${email}, 'Test User')
+    `;
+    await sql`
+      insert into auth_identities (id, user_id, provider, secret_hash, email_at_link)
+      values (${uuidv7()}, ${userId}, 'password', ${passwordHash}, ${email})
     `;
     await sql`
       insert into memberships (id, tenant_id, user_id, role)

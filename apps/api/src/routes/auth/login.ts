@@ -36,8 +36,15 @@ const loginRoute: FastifyPluginAsyncTypebox<LoginPluginOptions> = async (app, op
       const result = await app.withAdminTx(async (tx) => {
         const user = await findUserByEmail(tx, email);
         if (!user) return null;
-        const ok = await verifyPassword(user.passwordHash, password);
+        const identity = await findPasswordIdentity(tx, user.id);
+        if (!identity?.secretHash) return null;
+        const ok = await verifyPassword(identity.secretHash, password);
         if (!ok) return null;
+
+        await tx
+          .update(schema.authIdentities)
+          .set({ lastUsedAt: new Date() })
+          .where(eq(schema.authIdentities.id, identity.id));
 
         const memberships = await tx
           .select({
@@ -128,12 +135,29 @@ async function findUserByEmail(db: Database, email: string) {
     .select({
       id: schema.users.id,
       email: schema.users.email,
-      passwordHash: schema.users.passwordHash,
       displayName: schema.users.displayName,
       isSuperAdmin: schema.users.isSuperAdmin,
     })
     .from(schema.users)
     .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function findPasswordIdentity(db: Database, userId: string) {
+  const rows = await db
+    .select({
+      id: schema.authIdentities.id,
+      secretHash: schema.authIdentities.secretHash,
+    })
+    .from(schema.authIdentities)
+    .where(
+      and(
+        eq(schema.authIdentities.userId, userId),
+        eq(schema.authIdentities.provider, 'password'),
+        isNull(schema.authIdentities.deletedAt),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }

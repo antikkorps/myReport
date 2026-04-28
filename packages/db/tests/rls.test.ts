@@ -39,9 +39,14 @@ async function seedFixtures(pg: TestPostgres): Promise<Fixtures> {
              (${f.tenantB}, 'Tenant B', 'tenant-b')
     `;
     await admin.sql`
-      insert into users (id, email, password_hash, display_name)
-      values (${f.userA}, 'a@example.test', 'x', 'Alice'),
-             (${f.userB}, 'b@example.test', 'x', 'Bob')
+      insert into users (id, email, display_name)
+      values (${f.userA}, 'a@example.test', 'Alice'),
+             (${f.userB}, 'b@example.test', 'Bob')
+    `;
+    await admin.sql`
+      insert into auth_identities (id, user_id, provider, secret_hash)
+      values (${uuidv7()}, ${f.userA}, 'password', 'argon2:fake-a'),
+             (${uuidv7()}, ${f.userB}, 'password', 'argon2:fake-b')
     `;
     await admin.sql`
       insert into memberships (id, tenant_id, user_id, role)
@@ -179,6 +184,41 @@ describe('Row-Level Security', () => {
     });
   });
 
+  describe('auth_identities', () => {
+    it('a user sees only their own identities', async () => {
+      const connA = await connectAsAppUser(pg.url, { userId: f.userA, tenantId: f.tenantA });
+      try {
+        const rows = await connA.sql<{ user_id: string }[]>`
+          select user_id from auth_identities
+        `;
+        expect(rows.every((r) => r.user_id === f.userA)).toBe(true);
+        expect(rows.length).toBe(1);
+      } finally {
+        await connA.close();
+      }
+    });
+
+    it('a user cannot read another user identity even by id', async () => {
+      const admin = await connectAsAppAdmin(pg.url);
+      const otherIdentityId = await admin.sql<{ id: string }[]>`
+        select id from auth_identities where user_id = ${f.userB}
+      `;
+      await admin.close();
+      const target = otherIdentityId[0];
+      if (!target) throw new Error('expected userB identity');
+
+      const connA = await connectAsAppUser(pg.url, { userId: f.userA, tenantId: f.tenantA });
+      try {
+        const rows = await connA.sql<{ id: string }[]>`
+          select id from auth_identities where id = ${target.id}
+        `;
+        expect(rows).toHaveLength(0);
+      } finally {
+        await connA.close();
+      }
+    });
+  });
+
   describe('unset GUCs', () => {
     it('app_user with no tenant/user context sees nothing', async () => {
       const conn = await connectAsAppUser(pg.url);
@@ -187,6 +227,8 @@ describe('Row-Level Security', () => {
         expect(tenants).toHaveLength(0);
         const missions = await conn.sql<{ id: string }[]>`select id from missions`;
         expect(missions).toHaveLength(0);
+        const identities = await conn.sql<{ id: string }[]>`select id from auth_identities`;
+        expect(identities).toHaveLength(0);
       } finally {
         await conn.close();
       }
@@ -201,6 +243,8 @@ describe('Row-Level Security', () => {
         expect(tenants.length).toBeGreaterThanOrEqual(2);
         const missions = await admin.sql<{ id: string }[]>`select id from missions`;
         expect(missions.length).toBeGreaterThanOrEqual(2);
+        const identities = await admin.sql<{ id: string }[]>`select id from auth_identities`;
+        expect(identities.length).toBeGreaterThanOrEqual(2);
       } finally {
         await admin.close();
       }
