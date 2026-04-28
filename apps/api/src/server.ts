@@ -52,10 +52,15 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     // we relax CSP just for that route's subtree.
     contentSecurityPolicy: false,
   });
-  await app.register(fastifyRateLimit, {
-    max: 100,
-    timeWindow: '1 minute',
-  });
+  // Rate limit is disabled in test mode so integration tests can run
+  // many auth attempts back-to-back from 127.0.0.1 without hitting
+  // the 5/min cap. The cap is exercised separately if needed.
+  if (env.NODE_ENV !== 'test') {
+    await app.register(fastifyRateLimit, {
+      max: 100,
+      timeWindow: '1 minute',
+    });
+  }
 
   await app.register(fastifySwagger, {
     openapi: {

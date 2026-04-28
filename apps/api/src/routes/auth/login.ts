@@ -58,10 +58,14 @@ const loginRoute: FastifyPluginAsyncTypebox<LoginPluginOptions> = async (app, op
           .innerJoin(schema.tenants, eq(schema.tenants.id, schema.memberships.tenantId))
           .where(and(eq(schema.memberships.userId, user.id), isNull(schema.tenants.deletedAt)));
 
-        // Require at least one tenant; multi-tenant picker is a Phase 2
-        // concern, so for now we attach the first membership found.
-        const chosen = memberships[0];
-        if (!chosen) return { user, memberships: [], chosen: null };
+        // Multi-tenant picker is a Phase 2 concern; for now we attach
+        // the first membership found. A super_admin without any
+        // membership is allowed to sign in tenant-less (platform-ops
+        // UI) — sessions.tenant_id is nullable for that case.
+        const chosen = memberships[0] ?? null;
+        if (!chosen && !user.isSuperAdmin) {
+          return { user, memberships: [], chosen: null, refreshToken: null };
+        }
 
         const refreshToken = generateRefreshToken();
         const refreshTokenHash = hashRefreshToken(refreshToken);
@@ -69,7 +73,7 @@ const loginRoute: FastifyPluginAsyncTypebox<LoginPluginOptions> = async (app, op
 
         await createSession(tx, {
           userId: user.id,
-          tenantId: chosen.tenantId,
+          tenantId: chosen?.tenantId ?? null,
           refreshTokenHash,
           expiresAt,
           userAgent: request.headers['user-agent'] ?? null,
@@ -90,7 +94,7 @@ const loginRoute: FastifyPluginAsyncTypebox<LoginPluginOptions> = async (app, op
           .code(401)
           .send({ code: 'INVALID_CREDENTIALS', message: 'invalid credentials' });
       }
-      if (!result.chosen || !result.refreshToken) {
+      if (!result.refreshToken) {
         return reply
           .code(403)
           .send({ code: 'NO_TENANT', message: 'user is not a member of any active tenant' });
@@ -98,7 +102,7 @@ const loginRoute: FastifyPluginAsyncTypebox<LoginPluginOptions> = async (app, op
 
       const accessToken = await reply.jwtSign({
         sub: result.user.id,
-        tenantId: result.chosen.tenantId,
+        tenantId: result.chosen?.tenantId ?? null,
         isSuperAdmin: result.user.isSuperAdmin,
       });
 
@@ -119,12 +123,14 @@ const loginRoute: FastifyPluginAsyncTypebox<LoginPluginOptions> = async (app, op
           displayName: result.user.displayName,
           isSuperAdmin: result.user.isSuperAdmin,
         },
-        tenant: {
-          id: result.chosen.tenantId,
-          name: result.chosen.tenantName,
-          slug: result.chosen.tenantSlug,
-          role: result.chosen.role,
-        },
+        tenant: result.chosen
+          ? {
+              id: result.chosen.tenantId,
+              name: result.chosen.tenantName,
+              slug: result.chosen.tenantSlug,
+              role: result.chosen.role,
+            }
+          : null,
       });
     },
   );

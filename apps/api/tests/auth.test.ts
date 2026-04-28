@@ -3,16 +3,27 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Env } from '../src/config/env.ts';
 import { buildApp } from '../src/server.ts';
 import { startPostgres, stopPostgres, type TestPostgres } from './setup/postgres.ts';
-import { type Seed, seedUser } from './setup/seed.ts';
+import {
+  type OrphanSeed,
+  type Seed,
+  type SuperAdminSeed,
+  seedOrphanUser,
+  seedSuperAdmin,
+  seedUser,
+} from './setup/seed.ts';
 
 describe('auth + /me', () => {
   let pg: TestPostgres;
   let app: FastifyInstance;
   let seed: Seed;
+  let superAdmin: SuperAdminSeed;
+  let orphan: OrphanSeed;
 
   beforeAll(async () => {
     pg = await startPostgres();
     seed = await seedUser(pg.url);
+    superAdmin = await seedSuperAdmin(pg.url);
+    orphan = await seedOrphanUser(pg.url);
     const env: Env = {
       NODE_ENV: 'test',
       HOST: '127.0.0.1',
@@ -69,6 +80,41 @@ describe('auth + /me', () => {
     const refresh = cookies.find((c) => c.name === 'refresh_token');
     expect(refresh).toBeDefined();
     expect(refresh?.httpOnly).toBe(true);
+  });
+
+  it('lets a super_admin log in without any tenant membership', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: superAdmin.email, password: superAdmin.password },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.user.isSuperAdmin).toBe(true);
+    expect(body.tenant).toBeNull();
+    expect(body.accessToken).toBeTypeOf('string');
+
+    // /me should still work — the access token simply carries tenantId=null.
+    const me = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${body.accessToken}` },
+    });
+    expect(me.statusCode).toBe(200);
+    const meBody = me.json();
+    expect(meBody.user.id).toBe(superAdmin.userId);
+    expect(meBody.memberships).toEqual([]);
+    expect(meBody.currentTenant).toBeNull();
+  });
+
+  it('rejects a non-super-admin without any membership with 403 NO_TENANT', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: orphan.email, password: orphan.password },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ code: 'NO_TENANT' });
   });
 
   it('rejects /me without a token', async () => {
