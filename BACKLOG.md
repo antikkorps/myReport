@@ -79,4 +79,4 @@ Single source of truth pour suivre l'avancement. Mis à jour à chaque fin d'ét
 
 ## Dette technique déclarée
 
-_(aucune pour l'instant)_
+- **Console : 401 sur `/auth/refresh` au boot pour les visiteurs non loggués.** Comportement fonctionnel correct (le `try/catch` dans `auth.bootstrap()` avale silencieusement et l'app redirige proprement vers `/login`), mais le navigateur logue la status 401 dans la console — bruit cosmétique. Fix pressenti : flag non-sensible `localStorage['myreport.had-session']` posé au login / retiré au logout, et `bootstrap()` n'appelle `ensureRefresh()` que si le flag est présent. Tradeoff : un user qui purge son localStorage manuellement devra se re-logguer même si son cookie refresh est encore valide. À embarquer dans Phase 5 (polish MVP) ou dans une chore PR dédiée.
