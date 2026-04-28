@@ -65,11 +65,24 @@ pnpm db:generate   # Generate SQL migration from schema changes
 pnpm db:migrate    # Apply pending migrations (reads DATABASE_URL)
 pnpm db:push       # Dev-only: push schema directly, no migration file
 pnpm db:studio     # Drizzle Studio (GUI) against DATABASE_URL
-pnpm db:seed       # Insert the demo tenant
+pnpm db:seed       # Insert the demo tenant + dev users (idempotent)
 ```
 
 All scripts read `DATABASE_URL` from the repo-root `.env` file (via
 Node's native `--env-file` flag).
+
+### Dev credentials seeded by `pnpm db:seed`
+
+All three accounts share the password `devpassword`:
+
+| Email                       | Role           | Tenant |
+| --------------------------- | -------------- | ------ |
+| `admin@myreport.dev`        | super_admin    | none   |
+| `alice@demo.myreport.dev`   | cabinet_admin  | demo   |
+| `bob@demo.myreport.dev`     | auditor        | demo   |
+
+The seed re-inserts only what's missing, so it's safe to re-run after
+each migration or after `pnpm dev:reset`.
 
 ## Row-Level Security
 
@@ -115,4 +128,3 @@ independent of the `pnpm dev:up` compose stack.
 
 - Expand `missions` (Phase 3): template binding, client ref, deadlines,
   auditee token.
-- Seed users + memberships once the auth module lands.
