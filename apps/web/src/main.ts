@@ -1,15 +1,22 @@
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import PrimeVue from 'primevue/config';
+import ToastService from 'primevue/toastservice';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { router } from './router/index.ts';
+import { useAuthStore } from './stores/auth.ts';
 import { NoirSlatePreset } from './theme/preset.ts';
 import 'primeicons/primeicons.css';
 import './styles.css';
 
 const app = createApp(App);
 
-app.use(createPinia());
+const pinia = createPinia();
+app.use(pinia);
+// Activate the Pinia instance for non-component code (the bootstrap
+// call below uses the auth store before any component is mounted).
+setActivePinia(pinia);
+
 app.use(router);
 app.use(PrimeVue, {
   theme: {
@@ -28,5 +35,12 @@ app.use(PrimeVue, {
   },
   ripple: true,
 });
+app.use(ToastService);
 
-app.mount('#app');
+// Try to restore the session before mounting so the router guard sees
+// the populated store on first navigation (avoids a /login flash for
+// authenticated users reloading the app).
+const auth = useAuthStore();
+auth.bootstrap().finally(() => {
+  app.mount('#app');
+});
