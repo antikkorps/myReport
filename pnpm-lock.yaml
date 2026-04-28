@@ -173,6 +173,9 @@ importers:
 
   packages/db:
     dependencies:
+      argon2:
+        specifier: 0.44.0
+        version: 0.44.0
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(postgres@3.4.8)
