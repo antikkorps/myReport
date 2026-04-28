@@ -5,7 +5,7 @@ import type {
   LoginRequest,
 } from '@myreport/shared-schemas';
 import { defineStore } from 'pinia';
-import { useApiClient } from '../api/client.ts';
+import { useApiClient, useRefreshScheduler } from '../api/client.ts';
 
 interface AuthState {
   user: AuthenticatedUser | null;
@@ -13,6 +13,10 @@ interface AuthState {
   accessToken: string | null;
   loading: boolean;
   error: string | null;
+  bootstrapped: boolean;
+  // Monotonic counter incremented each time a session expires while a
+  // user was active. Components watch it to surface a toast + redirect.
+  sessionExpiredTick: number;
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -22,11 +26,30 @@ export const useAuthStore = defineStore('auth', {
     accessToken: null,
     loading: false,
     error: null,
+    bootstrapped: false,
+    sessionExpiredTick: 0,
   }),
   getters: {
     isAuthenticated: (state): boolean => state.user !== null && state.accessToken !== null,
   },
   actions: {
+    async bootstrap(): Promise<void> {
+      // Try a silent refresh from the httpOnly cookie. On success, the
+      // access token lands via onAccessTokenRotated and we hydrate /me.
+      // On failure (no cookie / expired / reused) we stay logged out
+      // — silently, since the user simply hasn't logged in yet.
+      const client = useApiClient();
+      try {
+        await client.ensureRefresh();
+        const me = await client.me.get();
+        this.user = me.user;
+        this.currentTenant = me.currentTenant;
+      } catch {
+        // No active session — leave the store in its initial state.
+      } finally {
+        this.bootstrapped = true;
+      }
+    },
     async login(payload: LoginRequest): Promise<boolean> {
       this.loading = true;
       this.error = null;
@@ -36,6 +59,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = response.user;
         this.currentTenant = response.tenant;
         this.accessToken = response.accessToken;
+        useRefreshScheduler().schedule(response.accessToken);
         return true;
       } catch (err) {
         this.error = err instanceof ApiError ? err.message : 'Erreur réseau';
@@ -45,6 +69,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async logout(): Promise<void> {
+      useRefreshScheduler().cancel();
       try {
         const client = useApiClient();
         await client.auth.logout();
@@ -53,6 +78,9 @@ export const useAuthStore = defineStore('auth', {
         // already-expired session) we still clear local state below.
       }
       this.reset();
+    },
+    markSessionExpired(_cause: unknown): void {
+      this.sessionExpiredTick += 1;
     },
     reset(): void {
       this.user = null;

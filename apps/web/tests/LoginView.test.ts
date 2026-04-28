@@ -1,4 +1,4 @@
-import type { ApiClient } from '@myreport/api-client';
+import type { ApiClient, RefreshScheduler } from '@myreport/api-client';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import PrimeVue from 'primevue/config';
@@ -14,9 +14,18 @@ vi.mock('../src/api/client.ts', () => {
     logout: vi.fn(),
   };
   const me = { get: vi.fn() };
-  const client: ApiClient = { auth, me };
+  const client: ApiClient = {
+    auth,
+    me,
+    ensureRefresh: vi.fn().mockResolvedValue('token'),
+  };
+  const scheduler: RefreshScheduler = {
+    schedule: vi.fn(),
+    cancel: vi.fn(),
+  };
   return {
     useApiClient: () => client,
+    useRefreshScheduler: () => scheduler,
     resetApiClientForTests: () => {},
   };
 });

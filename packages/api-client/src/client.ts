@@ -1,4 +1,4 @@
-import { ZErrorResponse } from '@myreport/shared-schemas';
+import { ZErrorResponse, ZRefreshResponse } from '@myreport/shared-schemas';
 import type { ZodType } from 'zod';
 import { ApiContractError, ApiError, ApiNetworkError } from './errors.ts';
 
@@ -9,6 +9,12 @@ export interface ApiClientConfig {
   // Provides the current access token at call time. Returning null
   // omits the Authorization header — used for /auth/login itself.
   getAccessToken?: () => string | null;
+  // Called when a silent refresh successfully rotated the access
+  // token. The host application updates its in-memory store from here.
+  onAccessTokenRotated?: (newAccessToken: string) => void;
+  // Called when a silent refresh failed (refresh cookie expired,
+  // reused, or the server rejected it). The host clears auth state.
+  onSessionExpired?: (cause: unknown) => void;
   // Override fetch for tests or for SSR contexts. Defaults to
   // globalThis.fetch.
   fetch?: typeof fetch;
@@ -34,12 +40,47 @@ export interface ApiClientCore {
     req: InternalRequest<unknown> & { responseSchema: ZodType<TResponse> },
   ): Promise<TResponse>;
   request(req: InternalRequest<unknown> & { responseSchema?: undefined }): Promise<void>;
+  // Forces a refresh, returning the new access token. Multiple parallel
+  // callers share the same in-flight refresh promise.
+  ensureRefresh(): Promise<string>;
 }
+
+// Paths whose 401 must NOT trigger the retry interceptor: refresh
+// avoids recursion, login + logout have different 401 semantics.
+const NON_RETRYABLE_PATHS = new Set(['/auth/login', '/auth/refresh', '/auth/logout']);
 
 export function createApiClientCore(config: ApiClientConfig): ApiClientCore {
   const fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
 
-  async function run<TResponse>(req: InternalRequest<unknown>): Promise<TResponse | undefined> {
+  // A single in-flight refresh promise; concurrent 401s share it so the
+  // server only sees one /auth/refresh call instead of N.
+  let inFlightRefresh: Promise<string> | null = null;
+
+  async function ensureRefresh(): Promise<string> {
+    if (inFlightRefresh) return inFlightRefresh;
+    inFlightRefresh = (async (): Promise<string> => {
+      try {
+        const refreshed = await rawRequest<{ accessToken: string }>({
+          method: 'POST',
+          path: '/auth/refresh',
+          responseSchema: ZRefreshResponse,
+        });
+        config.onAccessTokenRotated?.(refreshed.accessToken);
+        return refreshed.accessToken;
+      } catch (err) {
+        config.onSessionExpired?.(err);
+        throw err;
+      } finally {
+        inFlightRefresh = null;
+      }
+    })();
+    return inFlightRefresh;
+  }
+
+  // The "raw" fetch path: builds a request, parses the response. It is
+  // used both for normal traffic (wrapped by `run` for retry) and for
+  // /auth/refresh itself (which must skip the interceptor).
+  async function rawRequest<TResponse>(req: InternalRequest<unknown>): Promise<TResponse> {
     const url = joinUrl(config.baseUrl, req.path);
     const headers = new Headers();
     headers.set('Accept', 'application/json');
@@ -72,8 +113,15 @@ export function createApiClientCore(config: ApiClientConfig): ApiClientCore {
       );
     }
 
+    return parseResponse<TResponse>(response, req.responseSchema);
+  }
+
+  async function parseResponse<TResponse>(
+    response: Response,
+    responseSchema: ZodType | undefined,
+  ): Promise<TResponse> {
     if (response.status === 204) {
-      return undefined;
+      return undefined as TResponse;
     }
 
     const rawText = await response.text();
@@ -102,10 +150,10 @@ export function createApiClientCore(config: ApiClientConfig): ApiClientCore {
       throw new ApiError(response.status, errorParse.data);
     }
 
-    if (!req.responseSchema) {
-      return undefined;
+    if (!responseSchema) {
+      return undefined as TResponse;
     }
-    const result = req.responseSchema.safeParse(parsed);
+    const result = responseSchema.safeParse(parsed);
     if (!result.success) {
       throw new ApiContractError(
         response.status,
@@ -116,8 +164,35 @@ export function createApiClientCore(config: ApiClientConfig): ApiClientCore {
     return result.data as TResponse;
   }
 
+  async function run<TResponse>(req: InternalRequest<unknown>): Promise<TResponse | undefined> {
+    try {
+      return await rawRequest<TResponse>(req);
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.status === 401 &&
+        !NON_RETRYABLE_PATHS.has(req.path) &&
+        config.onAccessTokenRotated
+      ) {
+        // Token expired between scheduling and arrival. Refresh once
+        // and retry the original request with the new bearer.
+        try {
+          await ensureRefresh();
+        } catch {
+          // Refresh failed; surface the original 401 to the caller so
+          // it can react (e.g. redirect to /login). The session-expired
+          // callback was already invoked inside ensureRefresh.
+          throw err;
+        }
+        return rawRequest<TResponse>(req);
+      }
+      throw err;
+    }
+  }
+
   return {
     request: run as ApiClientCore['request'],
+    ensureRefresh,
   };
 }
 
