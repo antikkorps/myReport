@@ -6,6 +6,8 @@ declare module 'vue-router' {
     // True when the route requires an authenticated user. Public routes
     // (login, future landing) omit it.
     requiresAuth?: boolean;
+    // True when the route is super_admin only (platform-ops UI).
+    requiresSuperAdmin?: boolean;
   }
 }
 
@@ -20,6 +22,12 @@ const routes: RouteRecordRaw[] = [
     path: '/login',
     name: 'login',
     component: () => import('../views/LoginView.vue'),
+  },
+  {
+    path: '/admin/tenants',
+    name: 'admin-tenants',
+    component: () => import('../views/AdminTenantsView.vue'),
+    meta: { requiresAuth: true, requiresSuperAdmin: true },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -41,6 +49,11 @@ router.beforeEach((to) => {
       // Preserve the requested URL so post-login can land back there.
       query: { redirect: to.fullPath },
     };
+  }
+  if (to.meta.requiresSuperAdmin && !auth.user?.isSuperAdmin) {
+    // Authenticated but not super_admin → bounce home rather than
+    // login (they're already logged in, they just lack the role).
+    return { name: 'home' };
   }
   // Already-authenticated users hitting /login get bounced to home.
   if (to.name === 'login' && auth.isAuthenticated) {

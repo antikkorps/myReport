@@ -72,6 +72,11 @@ describe('cabinet_admin', () => {
       admin.can('read', { __subject: 'Mission', id: MISSION_OUTSIDE, tenantId: TENANT_B }),
     ).toBe(false);
   });
+
+  it('cannot create or delete Tenant rows (super_admin-only)', () => {
+    expect(admin.can('create', 'Tenant')).toBe(false);
+    expect(admin.can('delete', { __subject: 'Tenant', id: TENANT_A })).toBe(false);
+  });
 });
 
 describe('auditor — mission member', () => {
