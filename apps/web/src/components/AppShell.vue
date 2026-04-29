@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth.ts';
 
@@ -14,6 +14,13 @@ const toggleDrawer = (): void => {
 
 const auth = useAuthStore();
 const router = useRouter();
+
+// "Membres" is visible to anyone with admin rights in the current
+// tenant — a freshly-promoted cabinet_admin sees the link without
+// having to be a super_admin.
+const isAdmin = computed(
+  () => auth.user?.isSuperAdmin === true || auth.currentTenant?.role === 'cabinet_admin',
+);
 
 const onLogout = async (): Promise<void> => {
   await auth.logout();
@@ -63,7 +70,15 @@ const onLogout = async (): Promise<void> => {
           class="px-3 py-2 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
           @click="drawerOpen = false"
         >
-          Administration
+          Cabinets
+        </RouterLink>
+        <RouterLink
+          v-if="isAdmin"
+          to="/admin/users"
+          class="px-3 py-2 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+          @click="drawerOpen = false"
+        >
+          Membres
         </RouterLink>
         <RouterLink
           v-if="!auth.isAuthenticated"

@@ -8,6 +8,9 @@ declare module 'vue-router' {
     requiresAuth?: boolean;
     // True when the route is super_admin only (platform-ops UI).
     requiresSuperAdmin?: boolean;
+    // True when the route requires admin-level access in the current
+    // tenant (cabinet_admin) — super_admin always passes through.
+    requiresAdmin?: boolean;
   }
 }
 
@@ -28,6 +31,19 @@ const routes: RouteRecordRaw[] = [
     name: 'admin-tenants',
     component: () => import('../views/AdminTenantsView.vue'),
     meta: { requiresAuth: true, requiresSuperAdmin: true },
+  },
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: () => import('../views/AdminUsersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    // Public — the visitor lands here from an email link before having
+    // any session. The view materialises the session itself on success.
+    path: '/invitations/accept',
+    name: 'accept-invitation',
+    component: () => import('../views/AcceptInvitationView.vue'),
   },
   {
     path: '/:pathMatch(.*)*',
@@ -54,6 +70,11 @@ router.beforeEach((to) => {
     // Authenticated but not super_admin → bounce home rather than
     // login (they're already logged in, they just lack the role).
     return { name: 'home' };
+  }
+  if (to.meta.requiresAdmin) {
+    const isAdmin =
+      auth.user?.isSuperAdmin === true || auth.currentTenant?.role === 'cabinet_admin';
+    if (!isAdmin) return { name: 'home' };
   }
   // Already-authenticated users hitting /login get bounced to home.
   if (to.name === 'login' && auth.isAuthenticated) {

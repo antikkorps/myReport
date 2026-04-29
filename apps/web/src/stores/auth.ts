@@ -1,5 +1,6 @@
 import { ApiError } from '@myreport/api-client';
 import type {
+  AcceptInvitationResponse,
   AuthenticatedTenant,
   AuthenticatedUser,
   LoginRequest,
@@ -78,6 +79,24 @@ export const useAuthStore = defineStore('auth', {
         // already-expired session) we still clear local state below.
       }
       this.reset();
+    },
+    // Drops the local session without calling /auth/logout. Used when
+    // the server has already invalidated the session (e.g. the user
+    // just removed their own membership and the API revoked their
+    // sessions transactionally). Calling /auth/logout in that case
+    // would 401 against an already-expired refresh cookie.
+    forceLocalLogout(): void {
+      useRefreshScheduler().cancel();
+      this.reset();
+    },
+    // Lands the user straight into a session after accepting an
+    // invitation. Mirrors the post-login state: user/tenant filled,
+    // access token stored, refresh scheduler armed.
+    completeAcceptedInvitation(response: AcceptInvitationResponse): void {
+      this.user = response.user;
+      this.currentTenant = response.tenant;
+      this.accessToken = response.accessToken;
+      useRefreshScheduler().schedule(response.accessToken);
     },
     markSessionExpired(_cause: unknown): void {
       this.sessionExpiredTick += 1;

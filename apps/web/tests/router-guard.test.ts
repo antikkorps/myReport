@@ -5,7 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const auth = { login: vi.fn(), refresh: vi.fn(), logout: vi.fn() };
 const me = { get: vi.fn() };
 const tenants = { create: vi.fn(), list: vi.fn() };
-const apiClient: ApiClient = { auth, me, tenants, ensureRefresh: vi.fn() };
+const users = { list: vi.fn() };
+const memberships = { update: vi.fn(), remove: vi.fn() };
+const invitations = { create: vi.fn(), list: vi.fn(), revoke: vi.fn(), accept: vi.fn() };
+const apiClient: ApiClient = {
+  auth,
+  me,
+  tenants,
+  users,
+  memberships,
+  invitations,
+  ensureRefresh: vi.fn(),
+};
 const scheduler: RefreshScheduler = { schedule: vi.fn(), cancel: vi.fn() };
 
 vi.mock('../src/api/client.ts', () => ({
