@@ -159,6 +159,44 @@ describe('Row-Level Security', () => {
     });
   });
 
+  describe('memberships partial unique', () => {
+    it('allows re-adding a (tenant, user) pair after the previous one was soft-deleted', async () => {
+      const otherUserId = uuidv7();
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        // Create a side user we can attach + detach without polluting
+        // the rest of the suite's fixtures.
+        await admin.sql`
+          insert into users (id, email, display_name)
+          values (${otherUserId}, 'rejoin@example.test', 'Rejoin')
+        `;
+
+        const firstId = uuidv7();
+        await admin.sql`
+          insert into memberships (id, tenant_id, user_id, role)
+          values (${firstId}, ${f.tenantA}, ${otherUserId}, 'auditor')
+        `;
+
+        // Active duplicate is rejected by the partial unique.
+        await expect(
+          admin.sql`
+            insert into memberships (id, tenant_id, user_id, role)
+            values (${uuidv7()}, ${f.tenantA}, ${otherUserId}, 'auditor')
+          `,
+        ).rejects.toThrow(/duplicate key|memberships_tenant_user_active_unique/i);
+
+        // Soft-delete the first row → second insert now succeeds.
+        await admin.sql`update memberships set deleted_at = now() where id = ${firstId}`;
+        await admin.sql`
+          insert into memberships (id, tenant_id, user_id, role)
+          values (${uuidv7()}, ${f.tenantA}, ${otherUserId}, 'auditor')
+        `;
+      } finally {
+        await admin.close();
+      }
+    });
+  });
+
   describe('sessions', () => {
     it('a user sees only their own sessions', async () => {
       // Insert two sessions, one per user, via admin bypass.

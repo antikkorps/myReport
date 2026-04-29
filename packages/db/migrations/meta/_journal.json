@@ -29,6 +29,13 @@
       "when": 1777449349512,
       "tag": "0003_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777457168362,
+      "tag": "0004_memberships_soft_delete",
+      "breakpoints": true
     }
   ]
 }
