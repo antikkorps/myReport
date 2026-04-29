@@ -35,6 +35,7 @@ describe('auth + /me', () => {
       REFRESH_TOKEN_TTL_DAYS: 14,
       COOKIE_DOMAIN: undefined,
       CORS_ORIGIN: 'http://localhost:5173',
+      EMAIL_DRIVER: 'console',
     };
     app = await buildApp(env);
   });

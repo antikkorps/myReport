@@ -17,6 +17,9 @@ const EnvSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(14),
   COOKIE_DOMAIN: z.string().optional(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  // Outbound email driver. Only `console` is wired today; production
+  // drivers will extend this enum as they land.
+  EMAIL_DRIVER: z.enum(['console']).default('console'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
