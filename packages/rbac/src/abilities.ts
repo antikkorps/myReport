@@ -65,6 +65,7 @@ export function defineAbilitiesFor(ctx: AbilityContext): AppAbility {
     can('manage', 'Membership', { tenantId: ctx.tenantId } as never);
     can('manage', 'Mission', { tenantId: ctx.tenantId } as never);
     can('manage', 'MissionMember', { tenantId: ctx.tenantId } as never);
+    can('manage', 'Invitation', { tenantId: ctx.tenantId } as never);
     return build({ detectSubjectType });
   }
 

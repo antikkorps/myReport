@@ -6,16 +6,19 @@ import fastifySensible from '@fastify/sensible';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import type { EmailSender } from '@myreport/email';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Env } from './config/env.ts';
 import abilityPlugin from './plugins/ability.ts';
 import authPlugin from './plugins/auth.ts';
 import dbPlugin from './plugins/db.ts';
 import dbContextPlugin from './plugins/dbContext.ts';
+import emailPlugin from './plugins/email.ts';
 import errorHandlerPlugin from './plugins/errorHandler.ts';
 import loginRoute from './routes/auth/login.ts';
 import logoutRoute from './routes/auth/logout.ts';
 import refreshRoute from './routes/auth/refresh.ts';
+import invitationsRoutes from './routes/invitations.ts';
 import meRoute from './routes/me.ts';
 import tenantsRoutes from './routes/tenants.ts';
 
@@ -25,7 +28,13 @@ export type AppInstance = FastifyInstance & {
   withTypeProvider: never;
 };
 
-export async function buildApp(env: Env): Promise<FastifyInstance> {
+export interface BuildAppOptions {
+  // Optional EmailSender override — used by integration tests to assert
+  // against a captured outbox without going through the env factory.
+  emailSender?: EmailSender;
+}
+
+export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
@@ -85,6 +94,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     accessTokenTtl: env.JWT_ACCESS_TTL,
   });
   await app.register(abilityPlugin);
+  await app.register(emailPlugin, opts.emailSender ? { env, override: opts.emailSender } : { env });
 
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -102,6 +112,12 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   });
   await app.register(meRoute);
   await app.register(tenantsRoutes);
+  await app.register(invitationsRoutes, {
+    webBaseUrl: env.WEB_BASE_URL,
+    refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
+    cookieDomain: env.COOKIE_DOMAIN,
+    isProd: env.NODE_ENV === 'production',
+  });
 
   return app;
 }

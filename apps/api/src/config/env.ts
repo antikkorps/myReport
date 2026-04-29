@@ -20,6 +20,9 @@ const EnvSchema = z.object({
   // Outbound email driver. Only `console` is wired today; production
   // drivers will extend this enum as they land.
   EMAIL_DRIVER: z.enum(['console']).default('console'),
+  // Public base URL of the web app. Used to build the accept link in
+  // invitation emails. Must NOT include a trailing slash.
+  WEB_BASE_URL: z.string().url().default('http://localhost:5173'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
