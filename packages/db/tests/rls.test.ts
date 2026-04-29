@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -235,6 +236,171 @@ describe('Row-Level Security', () => {
     });
   });
 
+  describe('invitations', () => {
+    // Helper: random sha256-hashed token, never reused across rows.
+    const tokenHash = (): Buffer => createHash('sha256').update(randomBytes(32)).digest();
+
+    it('a tenant only sees its own invitations', async () => {
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values
+            (${uuidv7()}, ${f.tenantA}, 'invitee-a@example.test', 'auditor',
+             ${tokenHash()}, now() + interval '7 days'),
+            (${uuidv7()}, ${f.tenantB}, 'invitee-b@example.test', 'auditor',
+             ${tokenHash()}, now() + interval '7 days')
+        `;
+      } finally {
+        await admin.close();
+      }
+
+      const connA = await connectAsAppUser(pg.url, { userId: f.userA, tenantId: f.tenantA });
+      try {
+        const rows = await connA.sql<{ tenant_id: string }[]>`
+          select tenant_id from invitations
+        `;
+        expect(rows.every((r) => r.tenant_id === f.tenantA)).toBe(true);
+        expect(rows).toHaveLength(1);
+      } finally {
+        await connA.close();
+      }
+    });
+
+    it('cannot insert an invitation into another tenant', async () => {
+      const connA = await connectAsAppUser(pg.url, { userId: f.userA, tenantId: f.tenantA });
+      try {
+        await expect(
+          connA.sql`
+            insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+            values (${uuidv7()}, ${f.tenantB}, 'sneaky@example.test', 'auditor',
+                    ${tokenHash()}, now() + interval '7 days')
+          `,
+        ).rejects.toThrow(/row-level security|violates row-level/i);
+      } finally {
+        await connA.close();
+      }
+    });
+
+    it('cannot update another tenant invitation (no rows match)', async () => {
+      // Seed a second invitation for tenant B that we'll try to revoke from A.
+      const targetId = uuidv7();
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${targetId}, ${f.tenantB}, 'cross-tenant@example.test', 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+      } finally {
+        await admin.close();
+      }
+
+      const connA = await connectAsAppUser(pg.url, { userId: f.userA, tenantId: f.tenantA });
+      try {
+        const result = await connA.sql`
+          update invitations set revoked_at = now() where id = ${targetId}
+        `;
+        expect(result.count).toBe(0);
+      } finally {
+        await connA.close();
+      }
+    });
+
+    it('app_user with no tenant context sees no invitations', async () => {
+      const conn = await connectAsAppUser(pg.url);
+      try {
+        const rows = await conn.sql<{ id: string }[]>`select id from invitations`;
+        expect(rows).toHaveLength(0);
+      } finally {
+        await conn.close();
+      }
+    });
+
+    it('partial unique blocks two active invitations for the same (tenant, email)', async () => {
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${uuidv7()}, ${f.tenantA}, 'dup@example.test', 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+        await expect(
+          admin.sql`
+            insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+            values (${uuidv7()}, ${f.tenantA}, 'dup@example.test', 'auditor',
+                    ${tokenHash()}, now() + interval '7 days')
+          `,
+        ).rejects.toThrow(/duplicate key|invitations_tenant_email_active_unique/i);
+      } finally {
+        await admin.close();
+      }
+    });
+
+    it('allows a fresh invitation after the previous one was revoked', async () => {
+      const email = 'revoke-then-reinvite@example.test';
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        const firstId = uuidv7();
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${firstId}, ${f.tenantA}, ${email}, 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+        await admin.sql`update invitations set revoked_at = now() where id = ${firstId}`;
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${uuidv7()}, ${f.tenantA}, ${email}, 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+      } finally {
+        await admin.close();
+      }
+    });
+
+    it('allows a fresh invitation after the previous one was consumed', async () => {
+      const email = 'consume-then-reinvite@example.test';
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        const firstId = uuidv7();
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${firstId}, ${f.tenantA}, ${email}, 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+        await admin.sql`update invitations set consumed_at = now() where id = ${firstId}`;
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${uuidv7()}, ${f.tenantA}, ${email}, 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+      } finally {
+        await admin.close();
+      }
+    });
+
+    it('allows a fresh invitation after the previous one was soft-deleted', async () => {
+      const email = 'softdelete-then-reinvite@example.test';
+      const admin = await connectAsAppAdmin(pg.url);
+      try {
+        const firstId = uuidv7();
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${firstId}, ${f.tenantA}, ${email}, 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+        await admin.sql`update invitations set deleted_at = now() where id = ${firstId}`;
+        await admin.sql`
+          insert into invitations (id, tenant_id, email, role, token_hash, expires_at)
+          values (${uuidv7()}, ${f.tenantA}, ${email}, 'auditor',
+                  ${tokenHash()}, now() + interval '7 days')
+        `;
+      } finally {
+        await admin.close();
+      }
+    });
+  });
+
   describe('app_admin', () => {
     it('bypasses RLS and sees everything', async () => {
       const admin = await connectAsAppAdmin(pg.url);
@@ -245,6 +411,10 @@ describe('Row-Level Security', () => {
         expect(missions.length).toBeGreaterThanOrEqual(2);
         const identities = await admin.sql<{ id: string }[]>`select id from auth_identities`;
         expect(identities.length).toBeGreaterThanOrEqual(2);
+        const invitations = await admin.sql<{ id: string }[]>`select id from invitations`;
+        // The invitations describe block above seeded several rows
+        // across both tenants; admin sees the union.
+        expect(invitations.length).toBeGreaterThanOrEqual(2);
       } finally {
         await admin.close();
       }

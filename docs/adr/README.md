@@ -7,3 +7,4 @@ One file per decision, numbered sequentially. Never rewrite history — supersed
 ## Index
 
 - [0001 — Initial stack decisions](./0001-stack-decisions.md)
+- [0002 — Invitations data model](./0002-invitations-model.md)
