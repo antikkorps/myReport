@@ -1,5 +1,6 @@
 export * from './auth-identities.ts';
 export * from './enums.ts';
+export * from './invitations.ts';
 export * from './memberships.ts';
 export * from './mission-members.ts';
 export * from './missions.ts';
