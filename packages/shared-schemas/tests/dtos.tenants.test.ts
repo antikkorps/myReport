@@ -31,41 +31,21 @@ describe('TenantSlug', () => {
 });
 
 describe('CreateTenantRequest', () => {
-  it('requires name + slug + firstAdmin block, with min password length', () => {
+  it('requires name + slug + adminEmail (no password/displayName at this stage)', () => {
     expectParity(TBCreateTenantRequest, ZCreateTenantRequest, {
-      valid: [
-        {
-          name: 'Acme',
-          slug: 'acme',
-          firstAdmin: {
-            email: 'admin@acme.test',
-            displayName: 'Alice',
-            password: 'hunter2hunter2',
-          },
-        },
-      ],
+      valid: [{ name: 'Acme', slug: 'acme', adminEmail: 'admin@acme.test' }],
       invalid: [
         {},
-        { name: 'A', slug: 'acme', firstAdmin: {} },
-        {
-          name: '',
-          slug: 'acme',
-          firstAdmin: { email: 'a@b.c', displayName: 'A', password: 'longenough' },
-        },
-        {
-          name: 'A',
-          slug: 'BadSlug',
-          firstAdmin: { email: 'a@b.c', displayName: 'A', password: 'longenough' },
-        },
+        { name: 'A', slug: 'acme' },
+        { name: '', slug: 'acme', adminEmail: 'a@b.c' },
+        { name: 'A', slug: 'BadSlug', adminEmail: 'a@b.c' },
+        { name: 'A', slug: 'ok-slug', adminEmail: 'not-an-email' },
+        // Legacy shape must be rejected so a stale front cannot succeed
+        // by accident against the new API.
         {
           name: 'A',
           slug: 'ok-slug',
-          firstAdmin: { email: 'not-an-email', displayName: 'A', password: 'longenough' },
-        },
-        {
-          name: 'A',
-          slug: 'ok-slug',
-          firstAdmin: { email: 'a@b.c', displayName: 'A', password: 'short' },
+          firstAdmin: { email: 'a@b.c', displayName: 'A', password: 'longenough' },
         },
       ],
     });
@@ -73,7 +53,7 @@ describe('CreateTenantRequest', () => {
 });
 
 describe('CreateTenantResponse', () => {
-  it('requires tenant + firstAdmin summaries with valid uuids', () => {
+  it('requires tenant + invitation summaries with valid uuids and ISO expiresAt', () => {
     expectParity(TBCreateTenantResponse, ZCreateTenantResponse, {
       valid: [
         {
@@ -82,10 +62,12 @@ describe('CreateTenantResponse', () => {
             name: 'Acme',
             slug: 'acme',
           },
-          firstAdmin: {
+          invitation: {
             id: '00000000-0000-0000-0000-000000000002',
             email: 'admin@acme.test',
-            displayName: 'Alice',
+            role: 'cabinet_admin',
+            expiresAt: '2026-05-06T10:00:00Z',
+            acceptUrl: 'http://localhost:5173/invitations/accept?token=abc',
           },
         },
       ],
@@ -93,10 +75,22 @@ describe('CreateTenantResponse', () => {
         {},
         {
           tenant: { id: 'not-uuid', name: 'A', slug: 'acme' },
-          firstAdmin: {
+          invitation: {
             id: '00000000-0000-0000-0000-000000000002',
             email: 'admin@acme.test',
-            displayName: 'Alice',
+            role: 'cabinet_admin',
+            expiresAt: '2026-05-06T10:00:00Z',
+            acceptUrl: 'http://localhost:5173/invitations/accept?token=abc',
+          },
+        },
+        {
+          tenant: { id: '00000000-0000-0000-0000-000000000001', name: 'A', slug: 'acme' },
+          invitation: {
+            id: '00000000-0000-0000-0000-000000000002',
+            email: 'admin@acme.test',
+            role: 'super_admin',
+            expiresAt: '2026-05-06T10:00:00Z',
+            acceptUrl: 'http://localhost:5173/invitations/accept?token=abc',
           },
         },
       ],

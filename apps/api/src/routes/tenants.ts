@@ -7,9 +7,25 @@ import {
   TBTenantListResponse,
 } from '@myreport/shared-schemas';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { hashPassword } from '../services/passwords.ts';
+import { buildInvitationEmail } from '../services/emails.ts';
+import {
+  buildAcceptUrl,
+  generateInvitationToken,
+  invitationExpiry,
+} from '../services/invitations.ts';
 
-const tenantsRoutes: FastifyPluginAsyncTypebox = async (app) => {
+interface TenantsPluginOptions {
+  // Public base URL of the web app — embedded in the invitation link
+  // sent to the freshly-named cabinet_admin.
+  webBaseUrl: string;
+}
+
+const tenantsRoutes: FastifyPluginAsyncTypebox<TenantsPluginOptions> = async (app, opts) => {
+  // Tenant creation goes through the invitation flow: super_admin
+  // names the cabinet + the email of the first admin, and a single
+  // invitation row is created alongside the tenant. The invitee picks
+  // their password and displayName at accept time. No password ever
+  // travels out-of-band.
   app.post(
     '/tenants',
     {
@@ -22,16 +38,23 @@ const tenantsRoutes: FastifyPluginAsyncTypebox = async (app) => {
           401: TBErrorResponse,
           403: TBErrorResponse,
           409: TBErrorResponse,
+          500: TBErrorResponse,
         },
         security: [{ bearerAuth: [] }],
       },
     },
     async (request, reply) => {
-      const { name, slug, firstAdmin } = request.body;
+      const auth = request.auth;
+      if (!auth) {
+        return reply.code(401).send({ code: 'UNAUTHORIZED', message: 'authentication required' });
+      }
+      const { name, slug, adminEmail } = request.body;
 
-      // Hash the password outside the transaction so a slow argon2id
-      // run does not hold the DB tx open for ~250 ms.
-      const passwordHash = await hashPassword(firstAdmin.password);
+      // Token + expiry generated outside the tx so they can be passed
+      // to the email template after commit.
+      const token = generateInvitationToken();
+      const expiresAt = invitationExpiry();
+      const acceptUrl = buildAcceptUrl(opts.webBaseUrl, token.clear);
 
       const result = await app.withAdminTx(async (tx) => {
         const slugTaken = await tx
@@ -39,18 +62,18 @@ const tenantsRoutes: FastifyPluginAsyncTypebox = async (app) => {
           .from(schema.tenants)
           .where(and(eq(schema.tenants.slug, slug), isNull(schema.tenants.deletedAt)))
           .limit(1);
-        if (slugTaken.length > 0) {
-          return { kind: 'slug-taken' as const };
-        }
+        if (slugTaken.length > 0) return { kind: 'slug-taken' as const };
 
+        // Refuse early when the admin email already maps to a global
+        // user. The accept route would surface the same EMAIL_TAKEN
+        // later anyway; failing here avoids leaving a dead invitation
+        // around. Multi-tenant user is a future story.
         const emailTaken = await tx
           .select({ id: schema.users.id })
           .from(schema.users)
-          .where(and(eq(schema.users.email, firstAdmin.email), isNull(schema.users.deletedAt)))
+          .where(and(eq(schema.users.email, adminEmail), isNull(schema.users.deletedAt)))
           .limit(1);
-        if (emailTaken.length > 0) {
-          return { kind: 'email-taken' as const };
-        }
+        if (emailTaken.length > 0) return { kind: 'email-taken' as const };
 
         const [tenantRow] = await tx.insert(schema.tenants).values({ name, slug }).returning({
           id: schema.tenants.id,
@@ -59,34 +82,37 @@ const tenantsRoutes: FastifyPluginAsyncTypebox = async (app) => {
         });
         if (!tenantRow) throw new Error('failed to insert tenant');
 
-        const [userRow] = await tx
-          .insert(schema.users)
+        const [invitation] = await tx
+          .insert(schema.invitations)
           .values({
-            email: firstAdmin.email,
-            displayName: firstAdmin.displayName,
-            isSuperAdmin: false,
+            tenantId: tenantRow.id,
+            email: adminEmail,
+            role: 'cabinet_admin',
+            tokenHash: token.hash,
+            expiresAt,
+            invitedByUserId: auth.sub,
           })
           .returning({
-            id: schema.users.id,
-            email: schema.users.email,
-            displayName: schema.users.displayName,
+            id: schema.invitations.id,
+            email: schema.invitations.email,
+            role: schema.invitations.role,
+            expiresAt: schema.invitations.expiresAt,
           });
-        if (!userRow) throw new Error('failed to insert user');
+        if (!invitation) throw new Error('failed to insert invitation');
 
-        await tx.insert(schema.authIdentities).values({
-          userId: userRow.id,
-          provider: 'password',
-          secretHash: passwordHash,
-          emailAtLink: userRow.email,
-        });
+        const inviterRows = await tx
+          .select({ displayName: schema.users.displayName })
+          .from(schema.users)
+          .where(eq(schema.users.id, auth.sub))
+          .limit(1);
+        const inviterName = inviterRows[0]?.displayName ?? null;
 
-        await tx.insert(schema.memberships).values({
-          userId: userRow.id,
-          tenantId: tenantRow.id,
-          role: 'cabinet_admin',
-        });
-
-        return { kind: 'ok' as const, tenant: tenantRow, user: userRow };
+        return {
+          kind: 'ok' as const,
+          tenant: tenantRow,
+          invitation,
+          inviterName,
+        };
       });
 
       if (result.kind === 'slug-taken') {
@@ -100,9 +126,40 @@ const tenantsRoutes: FastifyPluginAsyncTypebox = async (app) => {
           .send({ code: 'EMAIL_TAKEN', message: 'a user with this email already exists' });
       }
 
+      // Email is sent after the tx commits — failure to deliver must
+      // not roll back a tenant we already showed the caller. Same
+      // pattern as POST /invitations.
+      try {
+        await app.emailSender.send(
+          buildInvitationEmail({
+            inviteeEmail: result.invitation.email,
+            tenantName: result.tenant.name,
+            inviterName: result.inviterName,
+            role: result.invitation.role,
+            acceptUrl,
+            expiresAt: result.invitation.expiresAt,
+          }),
+        );
+      } catch (err) {
+        request.log.error(
+          { err, invitationId: result.invitation.id, tenantId: result.tenant.id },
+          'tenant invitation email failed',
+        );
+        return reply.code(500).send({
+          code: 'EMAIL_DELIVERY_FAILED',
+          message: 'tenant created but the admin invitation email could not be sent',
+        });
+      }
+
       return reply.code(201).send({
         tenant: result.tenant,
-        firstAdmin: result.user,
+        invitation: {
+          id: result.invitation.id,
+          email: result.invitation.email,
+          role: result.invitation.role,
+          expiresAt: result.invitation.expiresAt.toISOString(),
+          acceptUrl,
+        },
       });
     },
   );
@@ -143,7 +200,13 @@ const tenantsRoutes: FastifyPluginAsyncTypebox = async (app) => {
             ),
           })
           .from(schema.tenants)
-          .leftJoin(schema.memberships, eq(schema.memberships.tenantId, schema.tenants.id))
+          .leftJoin(
+            schema.memberships,
+            and(
+              eq(schema.memberships.tenantId, schema.tenants.id),
+              isNull(schema.memberships.deletedAt),
+            ),
+          )
           .where(isNull(schema.tenants.deletedAt))
           .groupBy(schema.tenants.id)
           .orderBy(schema.tenants.createdAt);

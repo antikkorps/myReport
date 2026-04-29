@@ -1,24 +1,33 @@
+import { type ConsoleEmailSender, createConsoleEmailSender } from '@myreport/email';
 import type { FastifyInstance } from 'fastify';
 import postgres from 'postgres';
 import { uuidv7 } from 'uuidv7';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Env } from '../src/config/env.ts';
 import { buildApp } from '../src/server.ts';
 import { startPostgres, stopPostgres, type TestPostgres } from './setup/postgres.ts';
 import { type Seed, type SuperAdminSeed, seedSuperAdmin, seedUser } from './setup/seed.ts';
 
 // Edge cases listed up-front (per the project's "test edge cases" rule):
-// - super_admin creates tenant + first admin (happy path)
-// - 401 when unauthenticated
-// - 403 when authenticated but not super_admin
-// - 400 when payload validation fails (empty name, bad slug, short
-//   password, malformed email)
-// - 409 SLUG_TAKEN when slug collides with an active tenant
-// - 409 EMAIL_TAKEN when email collides with an active user
-// - Slug of a soft-deleted tenant is reusable
-// - Email of a soft-deleted user is reusable
-// - GET /tenants happy path (active only, includes membershipCount)
-// - GET /tenants 403 for non-super-admin
+//
+// POST /tenants (now: tenant + cabinet_admin invitation flow)
+//   - super_admin creates the tenant, an invitation row is persisted,
+//     the invitation email is sent, accepting the invitation lets the
+//     invitee log in as cabinet_admin.
+//   - 401 unauthenticated, 403 non-super-admin
+//   - 400 on shape variants (empty name, bad slug, malformed email,
+//     legacy `firstAdmin` payload from a stale front)
+//   - 409 SLUG_TAKEN when the slug matches an active tenant
+//   - 409 EMAIL_TAKEN when the adminEmail already matches an active
+//     global user (multi-tenant user is a future story)
+//   - slug of a soft-deleted tenant is reusable
+//   - email of a soft-deleted user is reusable
+//
+// GET /tenants
+//   - super_admin sees the active tenants with membership counts
+//     (= 0 until the invitation is accepted)
+//   - excludes soft-deleted tenants
+//   - 403 non-super-admin, 401 unauthenticated
 
 describe('admin tenants', () => {
   let pg: TestPostgres;
@@ -26,6 +35,7 @@ describe('admin tenants', () => {
   let cabinetAdmin: Seed;
   let superAdmin: SuperAdminSeed;
   let superAdminToken: string;
+  let emailSender: ConsoleEmailSender;
 
   beforeAll(async () => {
     pg = await startPostgres();
@@ -45,7 +55,9 @@ describe('admin tenants', () => {
       EMAIL_DRIVER: 'console',
       WEB_BASE_URL: 'http://localhost:5173',
     };
-    app = await buildApp(env);
+
+    emailSender = createConsoleEmailSender({ log: () => {} });
+    app = await buildApp(env, { emailSender });
 
     const login = await app.inject({
       method: 'POST',
@@ -60,20 +72,23 @@ describe('admin tenants', () => {
     if (pg) await stopPostgres(pg);
   });
 
-  function payload(slug: string, email: string) {
-    return {
-      name: 'Acme',
-      slug,
-      firstAdmin: {
-        email,
-        displayName: 'Alice',
-        password: 'correct-horse-battery-staple',
-      },
-    };
+  beforeEach(() => {
+    emailSender.reset();
+  });
+
+  function payload(slug: string, adminEmail: string) {
+    return { name: 'Acme', slug, adminEmail };
+  }
+
+  function extractToken(acceptUrl: string): string {
+    const url = new URL(acceptUrl);
+    const token = url.searchParams.get('token');
+    if (!token) throw new Error('no token in acceptUrl');
+    return token;
   }
 
   describe('POST /tenants', () => {
-    it('creates a tenant + first cabinet_admin user (happy path)', async () => {
+    it('creates the tenant + cabinet_admin invitation, sends the email, and the invitee can log in after accepting', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/tenants',
@@ -83,10 +98,28 @@ describe('admin tenants', () => {
       expect(res.statusCode).toBe(201);
       const body = res.json();
       expect(body.tenant.slug).toBe('acme');
-      expect(body.firstAdmin.email).toBe('alice@acme.test');
+      expect(body.invitation.email).toBe('alice@acme.test');
+      expect(body.invitation.role).toBe('cabinet_admin');
+      expect(body.invitation.acceptUrl).toMatch(
+        /^http:\/\/localhost:5173\/invitations\/accept\?token=/,
+      );
 
-      // The new user can log in with the supplied password and lands
-      // attached to the new tenant as cabinet_admin.
+      // Invitation email was sent through the captured sender.
+      expect(emailSender.sent).toHaveLength(1);
+      const sent = emailSender.sent[0];
+      if (!sent) throw new Error('expected one captured email');
+      expect(sent.email.to).toBe('alice@acme.test');
+      expect(sent.email.text).toContain(body.invitation.acceptUrl);
+
+      // Accept the invitation to materialise the user, then log in.
+      const token = extractToken(body.invitation.acceptUrl);
+      const accept = await app.inject({
+        method: 'POST',
+        url: `/invitations/${token}/accept`,
+        payload: { password: 'correct-horse-battery-staple', displayName: 'Alice' },
+      });
+      expect(accept.statusCode).toBe(200);
+
       const login = await app.inject({
         method: 'POST',
         url: '/auth/login',
@@ -123,20 +156,29 @@ describe('admin tenants', () => {
     });
 
     it.each([
-      ['empty name', { name: '', slug: 'val-1', email: 'a@b.test', password: 'longenough!' }],
-      ['bad slug', { name: 'A', slug: 'BadSlug', email: 'a@b.test', password: 'longenough!' }],
-      ['short slug', { name: 'A', slug: 'a', email: 'a@b.test', password: 'longenough!' }],
-      ['short password', { name: 'A', slug: 'val-2', email: 'a@b.test', password: 'short' }],
-      ['bad email', { name: 'A', slug: 'val-3', email: 'not-an-email', password: 'longenough!' }],
-    ])('returns 400 on %s', async (_label, p) => {
+      ['empty name', { name: '', slug: 'val-1', adminEmail: 'a@b.test' }],
+      ['bad slug', { name: 'A', slug: 'BadSlug', adminEmail: 'a@b.test' }],
+      ['short slug', { name: 'A', slug: 'a', adminEmail: 'a@b.test' }],
+      ['bad email', { name: 'A', slug: 'val-3', adminEmail: 'not-an-email' }],
+    ])('returns 400 on %s', async (_label, body) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/tenants',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('rejects the legacy firstAdmin payload (stale front)', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/tenants',
         headers: { authorization: `Bearer ${superAdminToken}` },
         payload: {
-          name: p.name,
-          slug: p.slug,
-          firstAdmin: { email: p.email, displayName: 'X', password: p.password },
+          name: 'Legacy',
+          slug: 'legacy',
+          firstAdmin: { email: 'a@b.test', displayName: 'A', password: 'longenough!' },
         },
       });
       expect(res.statusCode).toBe(400);
@@ -153,24 +195,27 @@ describe('admin tenants', () => {
         method: 'POST',
         url: '/tenants',
         headers: { authorization: `Bearer ${superAdminToken}` },
-        payload: payload('dup-slug', 'second-dup@example.test'),
+        payload: payload('dup-slug-2', 'second-dup@example.test'),
       });
-      expect(res.statusCode).toBe(409);
-      expect(res.json()).toMatchObject({ code: 'SLUG_TAKEN' });
-    });
+      // Different slug + email → 201 (sanity check the prior call worked).
+      expect(res.statusCode).toBe(201);
 
-    it('returns 409 EMAIL_TAKEN when the email matches an active user', async () => {
-      await app.inject({
+      const collide = await app.inject({
         method: 'POST',
         url: '/tenants',
         headers: { authorization: `Bearer ${superAdminToken}` },
-        payload: payload('first-email', 'shared@example.test'),
+        payload: payload('dup-slug', 'third-dup@example.test'),
       });
+      expect(collide.statusCode).toBe(409);
+      expect(collide.json()).toMatchObject({ code: 'SLUG_TAKEN' });
+    });
+
+    it('returns 409 EMAIL_TAKEN when adminEmail matches an existing global user', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/tenants',
         headers: { authorization: `Bearer ${superAdminToken}` },
-        payload: payload('second-email', 'shared@example.test'),
+        payload: payload('email-conflict', cabinetAdmin.email),
       });
       expect(res.statusCode).toBe(409);
       expect(res.json()).toMatchObject({ code: 'EMAIL_TAKEN' });
@@ -180,11 +225,9 @@ describe('admin tenants', () => {
       const sql = postgres(pg.url, { max: 1, prepare: false });
       try {
         await sql`SET ROLE app_admin`;
-        // Create then soft-delete by slug 'reusable'.
-        const id = uuidv7();
         await sql`
           insert into tenants (id, name, slug, deleted_at)
-          values (${id}, 'Old', 'reusable', now())
+          values (${uuidv7()}, 'Old', 'reusable', now())
         `;
       } finally {
         await sql.end({ timeout: 5 });
@@ -203,10 +246,9 @@ describe('admin tenants', () => {
       const sql = postgres(pg.url, { max: 1, prepare: false });
       try {
         await sql`SET ROLE app_admin`;
-        const id = uuidv7();
         await sql`
           insert into users (id, email, display_name, deleted_at)
-          values (${id}, 'gone@example.test', 'Gone User', now())
+          values (${uuidv7()}, 'gone@example.test', 'Gone User', now())
         `;
       } finally {
         await sql.end({ timeout: 5 });
@@ -223,7 +265,7 @@ describe('admin tenants', () => {
   });
 
   describe('GET /tenants', () => {
-    it('returns the active tenants with membership counts (super_admin)', async () => {
+    it('returns active tenants with membership counts (= 0 until invitation accepted)', async () => {
       const res = await app.inject({
         method: 'GET',
         url: '/tenants',
@@ -232,10 +274,16 @@ describe('admin tenants', () => {
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(Array.isArray(body.items)).toBe(true);
-      expect(body.items.length).toBeGreaterThan(0);
+      // 'acme' was created in the happy-path test above and its
+      // invitation was accepted, so its membership count is at least 1.
       const acme = body.items.find((t: { slug: string }) => t.slug === 'acme');
       expect(acme).toBeDefined();
       expect(acme.membershipCount).toBeGreaterThanOrEqual(1);
+
+      // 'reusable' was created without accepting the invitation —
+      // membership count should be 0.
+      const reusable = body.items.find((t: { slug: string }) => t.slug === 'reusable');
+      expect(reusable?.membershipCount).toBe(0);
     });
 
     it('does not include soft-deleted tenants', async () => {
