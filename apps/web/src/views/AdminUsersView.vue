@@ -16,7 +16,7 @@ import Message from 'primevue/message';
 import Select from 'primevue/select';
 import { useToast } from 'primevue/usetoast';
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useApiClient } from '../api/client.ts';
 import { useAuthStore } from '../stores/auth.ts';
 
@@ -24,6 +24,43 @@ const client = useApiClient();
 const toast = useToast();
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
+
+// Super-admin operates on a specific tenant by passing ?tenantId in the
+// URL (typically arrived via the "Gérer les membres" button on
+// /admin/tenants). Cabinet-admin's tenant comes from their auth context
+// and the query param is ignored — RLS prevents cross-tenant access
+// anyway, but stripping it here keeps the request clean.
+const tenantOverride = computed<string | null>(() => {
+  if (auth.user?.isSuperAdmin !== true) return null;
+  const raw = route.query['tenantId'];
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  if (Array.isArray(raw) && typeof raw[0] === 'string' && raw[0].length > 0) return raw[0];
+  return null;
+});
+
+const tenantOverrideMissing = computed(
+  () => auth.user?.isSuperAdmin === true && !tenantOverride.value,
+);
+
+const tenantHeader = ref<string | null>(null);
+
+async function loadTenantHeader(): Promise<void> {
+  // Best-effort lookup of the tenant name for the page header. We
+  // already have GET /tenants for super_admin; if the requested id
+  // isn't there (deleted, typo) we surface a fatal banner.
+  if (!tenantOverride.value) {
+    tenantHeader.value = null;
+    return;
+  }
+  try {
+    const list = await client.tenants.list();
+    const match = list.items.find((t) => t.id === tenantOverride.value);
+    tenantHeader.value = match ? match.name : null;
+  } catch {
+    tenantHeader.value = null;
+  }
+}
 
 const ROLE_OPTIONS = [
   { label: 'Auditor', value: 'auditor' as const },
@@ -35,11 +72,19 @@ const pendingInvitations = ref<InvitationListItem[]>([]);
 const loading = ref(false);
 
 async function refresh(): Promise<void> {
+  if (tenantOverrideMissing.value) {
+    // super_admin without an explicit tenantId: nothing to load. The
+    // template surfaces a "pick a tenant first" banner.
+    users.value = [];
+    pendingInvitations.value = [];
+    return;
+  }
   loading.value = true;
   try {
+    const tenantId = tenantOverride.value ?? undefined;
     const [u, inv] = await Promise.all([
-      client.users.list(),
-      client.invitations.list({ status: 'pending' }),
+      client.users.list(tenantId ? { tenantId } : undefined),
+      client.invitations.list(tenantId ? { status: 'pending', tenantId } : { status: 'pending' }),
     ]);
     users.value = u.items;
     pendingInvitations.value = inv.items;
@@ -55,7 +100,9 @@ async function refresh(): Promise<void> {
   }
 }
 
-onMounted(refresh);
+onMounted(async () => {
+  await Promise.all([loadTenantHeader(), refresh()]);
+});
 
 // ---------------------------------------------------------------------
 // Invite form
@@ -81,9 +128,11 @@ async function onInviteSubmit(): Promise<void> {
   if (inviteValidation.value) return;
   inviteSubmitting.value = true;
   try {
+    const tenantId = tenantOverride.value ?? undefined;
     const created = await client.invitations.create({
       email: inviteEmail.value,
       role: inviteRole.value,
+      ...(tenantId ? { tenantId } : {}),
     });
     toast.add({
       severity: 'success',
@@ -107,6 +156,13 @@ async function onInviteSubmit(): Promise<void> {
           break;
         case 'EMAIL_TAKEN':
           inviteError.value = 'Cet email est déjà attaché à un compte existant.';
+          break;
+        case 'TENANT_ID_REQUIRED':
+          inviteError.value =
+            "Sélectionnez un cabinet depuis « Cabinets » avant d'envoyer une invitation.";
+          break;
+        case 'TENANT_NOT_FOUND':
+          inviteError.value = "Ce cabinet n'existe plus.";
           break;
         default:
           inviteError.value = err.message;
@@ -295,9 +351,37 @@ async function onRevokeInvitation(inv: InvitationListItem): Promise<void> {
 
 <template>
   <div class="flex flex-col gap-6 max-w-5xl">
-    <h1 class="text-2xl sm:text-3xl font-semibold">Membres du cabinet</h1>
+    <div class="flex flex-col gap-1">
+      <h1 class="text-2xl sm:text-3xl font-semibold">
+        {{ tenantHeader ? `Membres du cabinet — ${tenantHeader}` : 'Membres du cabinet' }}
+      </h1>
+      <p
+        v-if="tenantOverride && !tenantHeader"
+        class="text-sm text-surface-600 dark:text-surface-400"
+      >
+        Cabinet introuvable (peut-être supprimé). Retournez à la liste des cabinets.
+      </p>
+    </div>
 
-    <Card>
+    <Card v-if="tenantOverrideMissing">
+      <template #title>Aucun cabinet sélectionné</template>
+      <template #content>
+        <p class="text-sm">
+          En tant que super-administrateur vous devez d'abord choisir un cabinet pour gérer ses
+          membres. Ouvrez la liste des cabinets et cliquez sur « Gérer les membres ».
+        </p>
+        <div class="mt-3">
+          <Button
+            label="Aller aux cabinets"
+            icon="pi pi-arrow-right"
+            outlined
+            @click="router.push({ name: 'admin-tenants' })"
+          />
+        </div>
+      </template>
+    </Card>
+
+    <Card v-if="!tenantOverrideMissing">
       <template #title>Inviter un membre</template>
       <template #content>
         <form class="flex flex-col gap-4" @submit.prevent="onInviteSubmit">
@@ -345,7 +429,7 @@ async function onRevokeInvitation(inv: InvitationListItem): Promise<void> {
       </template>
     </Card>
 
-    <Card>
+    <Card v-if="!tenantOverrideMissing">
       <template #title>Membres actifs</template>
       <template #content>
         <DataTable

@@ -121,14 +121,40 @@ async function setupStore(): Promise<void> {
   store.accessToken = 'token';
 }
 
-async function mountView() {
+async function mountView(path = '/admin/users') {
   await setupStore();
   const router = makeRouter();
-  await router.push('/admin/users');
+  await router.push(path);
   const wrapper = mount(AdminUsersView, {
     global: { plugins: [router, PrimeVue, ToastService] },
   });
   // Let onMounted's await refresh() resolve.
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  return { wrapper, router };
+}
+
+async function setupSuperAdminStore(): Promise<void> {
+  setActivePinia(createPinia());
+  const { useAuthStore } = await import('../src/stores/auth.ts');
+  const store = useAuthStore();
+  store.user = {
+    id: '00000000-0000-0000-0000-0000000000ff',
+    email: 'super@example.test',
+    displayName: 'Super',
+    isSuperAdmin: true,
+  };
+  store.currentTenant = null;
+  store.accessToken = 'token';
+}
+
+async function mountSuperAdmin(path: string) {
+  await setupSuperAdminStore();
+  const router = makeRouter();
+  await router.push(path);
+  const wrapper = mount(AdminUsersView, {
+    global: { plugins: [router, PrimeVue, ToastService] },
+  });
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
   return { wrapper, router };
@@ -253,5 +279,68 @@ describe('AdminUsersView', () => {
     const store = useAuthStore();
     expect(store.user).toBeNull();
     expect(store.accessToken).toBeNull();
+  });
+
+  // -------------------------------------------------------------------
+  // Super-admin tenant-scoped flow (?tenantId=)
+  // -------------------------------------------------------------------
+
+  describe('super_admin', () => {
+    it('without ?tenantId: shows the empty state and does not call the API', async () => {
+      const { useApiClient } = await import('../src/api/client.ts');
+      const client = useApiClient();
+
+      const { wrapper } = await mountSuperAdmin('/admin/users');
+
+      expect(client.users.list).not.toHaveBeenCalled();
+      expect(client.invitations.list).not.toHaveBeenCalled();
+      expect(wrapper.text()).toContain('Aucun cabinet sélectionné');
+    });
+
+    it('with ?tenantId: scopes list + invite to that tenant', async () => {
+      const { useApiClient } = await import('../src/api/client.ts');
+      const client = useApiClient();
+      vi.mocked(client.tenants.list).mockResolvedValue({
+        items: [
+          {
+            id: TENANT_ID,
+            name: 'Acme',
+            slug: 'acme',
+            createdAt: '2026-04-29T12:00:00Z',
+            membershipCount: 1,
+          },
+        ],
+      });
+      vi.mocked(client.users.list).mockResolvedValue({ items: [peerMember()] });
+      vi.mocked(client.invitations.list).mockResolvedValue({ items: [] });
+      vi.mocked(client.invitations.create).mockResolvedValue({
+        id: 'inv-x',
+        email: 'new@example.test',
+        role: 'auditor',
+        tenantId: TENANT_ID,
+        expiresAt: '2026-05-06T12:00:00Z',
+        acceptUrl: 'http://localhost:5173/invitations/accept?token=x',
+      });
+
+      const { wrapper } = await mountSuperAdmin(`/admin/users?tenantId=${TENANT_ID}`);
+
+      expect(client.users.list).toHaveBeenCalledWith({ tenantId: TENANT_ID });
+      expect(client.invitations.list).toHaveBeenCalledWith({
+        status: 'pending',
+        tenantId: TENANT_ID,
+      });
+      // The header reflects the scoped tenant.
+      expect(wrapper.text()).toContain('Acme');
+
+      await wrapper.find('[data-testid="invite-email"]').setValue('new@example.test');
+      await wrapper.find('form').trigger('submit.prevent');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(client.invitations.create).toHaveBeenCalledWith({
+        email: 'new@example.test',
+        role: 'auditor',
+        tenantId: TENANT_ID,
+      });
+    });
   });
 });

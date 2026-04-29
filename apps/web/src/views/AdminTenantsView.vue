@@ -13,10 +13,20 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { useToast } from 'primevue/usetoast';
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { useApiClient } from '../api/client.ts';
 
 const client = useApiClient();
 const toast = useToast();
+const router = useRouter();
+
+function manageMembers(tenantId: string): void {
+  // Drill into a specific tenant's member list. The AdminUsersView
+  // reads ?tenantId= and routes the API calls through the super_admin
+  // path (withAdminTx), so super_admin can invite + manage members of
+  // any cabinet without being a member themselves.
+  void router.push({ name: 'admin-users', query: { tenantId } });
+}
 
 const name = ref('');
 const slug = ref('');
@@ -228,6 +238,18 @@ async function copyInvitationUrl(): Promise<void> {
           <Column field="createdAt" header="Créé le">
             <template #body="{ data }">
               {{ new Date(data.createdAt).toLocaleString() }}
+            </template>
+          </Column>
+          <Column header="Actions">
+            <template #body="{ data }">
+              <Button
+                label="Gérer les membres"
+                icon="pi pi-users"
+                outlined
+                size="small"
+                data-testid="manage-members"
+                @click="manageMembers(data.id)"
+              />
             </template>
           </Column>
         </DataTable>
