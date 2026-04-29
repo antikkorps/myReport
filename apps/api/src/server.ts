@@ -113,7 +113,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
     isProd: env.NODE_ENV === 'production',
   });
   await app.register(meRoute);
-  await app.register(tenantsRoutes);
+  await app.register(tenantsRoutes, { webBaseUrl: env.WEB_BASE_URL });
   await app.register(usersRoutes);
   await app.register(membershipsRoutes);
   await app.register(invitationsRoutes, {
