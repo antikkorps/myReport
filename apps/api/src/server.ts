@@ -20,7 +20,9 @@ import logoutRoute from './routes/auth/logout.ts';
 import refreshRoute from './routes/auth/refresh.ts';
 import invitationsRoutes from './routes/invitations.ts';
 import meRoute from './routes/me.ts';
+import membershipsRoutes from './routes/memberships.ts';
 import tenantsRoutes from './routes/tenants.ts';
+import usersRoutes from './routes/users.ts';
 
 export type AppInstance = FastifyInstance & {
   // Re-export the TypeBox provider so route files can rely on schema
@@ -112,6 +114,8 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   });
   await app.register(meRoute);
   await app.register(tenantsRoutes);
+  await app.register(usersRoutes);
+  await app.register(membershipsRoutes);
   await app.register(invitationsRoutes, {
     webBaseUrl: env.WEB_BASE_URL,
     refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
