@@ -77,6 +77,33 @@ describe('cabinet_admin', () => {
     expect(admin.can('create', 'Tenant')).toBe(false);
     expect(admin.can('delete', { __subject: 'Tenant', id: TENANT_A })).toBe(false);
   });
+
+  it('manages invitations of its own tenant only', () => {
+    expect(
+      admin.can('create', {
+        __subject: 'Invitation',
+        id: 'inv',
+        tenantId: TENANT_A,
+        role: 'auditor',
+      }),
+    ).toBe(true);
+    expect(
+      admin.can('delete', {
+        __subject: 'Invitation',
+        id: 'inv',
+        tenantId: TENANT_A,
+        role: 'cabinet_admin',
+      }),
+    ).toBe(true);
+    expect(
+      admin.can('create', {
+        __subject: 'Invitation',
+        id: 'inv',
+        tenantId: TENANT_B,
+        role: 'auditor',
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('auditor — mission member', () => {
@@ -149,6 +176,25 @@ describe('auditor — mission member', () => {
     ).toBe(false);
     expect(
       auditor.can('update', { __subject: 'Mission', id: MISSION_OUTSIDE, tenantId: TENANT_A }),
+    ).toBe(false);
+  });
+
+  it('cannot create or read invitations', () => {
+    expect(
+      auditor.can('create', {
+        __subject: 'Invitation',
+        id: 'inv',
+        tenantId: TENANT_A,
+        role: 'auditor',
+      }),
+    ).toBe(false);
+    expect(
+      auditor.can('read', {
+        __subject: 'Invitation',
+        id: 'inv',
+        tenantId: TENANT_A,
+        role: 'auditor',
+      }),
     ).toBe(false);
   });
 });

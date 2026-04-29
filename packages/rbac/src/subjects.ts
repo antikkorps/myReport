@@ -38,12 +38,20 @@ export interface MissionMemberSubject {
   readonly role: MissionRole;
 }
 
+export interface InvitationSubject {
+  readonly __subject: 'Invitation';
+  readonly id: string;
+  readonly tenantId: string;
+  readonly role: TenantRole;
+}
+
 export type Subject =
   | TenantSubject
   | UserSubject
   | MembershipSubject
   | MissionSubject
-  | MissionMemberSubject;
+  | MissionMemberSubject
+  | InvitationSubject;
 
 export type SubjectName = Subject['__subject'];
 
@@ -53,4 +61,5 @@ export const SUBJECT_NAMES: readonly SubjectName[] = [
   'Membership',
   'Mission',
   'MissionMember',
+  'Invitation',
 ] as const;

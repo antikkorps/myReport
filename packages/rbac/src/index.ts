@@ -6,6 +6,7 @@ export {
 } from './abilities.ts';
 export type { Action } from './actions.ts';
 export {
+  type InvitationSubject,
   type MembershipSubject,
   type MissionMemberSubject,
   type MissionRole,

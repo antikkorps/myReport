@@ -43,6 +43,7 @@ describe('admin tenants', () => {
       COOKIE_DOMAIN: undefined,
       CORS_ORIGIN: 'http://localhost:5173',
       EMAIL_DRIVER: 'console',
+      WEB_BASE_URL: 'http://localhost:5173',
     };
     app = await buildApp(env);
 

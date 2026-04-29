@@ -59,6 +59,9 @@ importers:
       '@myreport/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@myreport/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@myreport/rbac':
         specifier: workspace:*
         version: link:../../packages/rbac
