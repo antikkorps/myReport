@@ -1,7 +1,8 @@
-import type { Email, EmailSender } from '../sender.ts';
+import type { Email, EmailAddress, EmailSender } from '../sender.ts';
 
 export interface SentEmail {
   email: Email;
+  from: EmailAddress | null;
   sentAt: Date;
 }
 
@@ -10,6 +11,10 @@ export interface ConsoleEmailSenderOptions {
   // `console.info` with a structured payload — tests typically pass a
   // no-op sink and read `sender.sent` directly instead.
   log?: (entry: SentEmail) => void;
+  // Sender to attach to every captured entry. Optional for the console
+  // driver — tests rarely care about it. Production drivers (Resend,
+  // ...) require it.
+  from?: EmailAddress;
 }
 
 // Driver used in development and tests. Captures every send so callers
@@ -24,13 +29,14 @@ export function createConsoleEmailSender(
 ): ConsoleEmailSender {
   const sent: SentEmail[] = [];
   const log = options.log ?? defaultLog;
+  const from = options.from ?? null;
 
   return {
     get sent() {
       return sent;
     },
     async send(email: Email): Promise<void> {
-      const entry: SentEmail = { email, sentAt: new Date() };
+      const entry: SentEmail = { email, from, sentAt: new Date() };
       sent.push(entry);
       log(entry);
     },
@@ -46,8 +52,13 @@ function defaultLog(entry: SentEmail): void {
   // markup by terminal emulators.
   // biome-ignore lint/suspicious/noConsole: the console driver's purpose is to log to stdout in dev.
   console.info('[email:console]', {
+    from: entry.from ? formatAddress(entry.from) : null,
     to: entry.email.to,
     subject: entry.email.subject,
     sentAt: entry.sentAt.toISOString(),
   });
+}
+
+function formatAddress(addr: EmailAddress): string {
+  return addr.name ? `${addr.name} <${addr.address}>` : addr.address;
 }
