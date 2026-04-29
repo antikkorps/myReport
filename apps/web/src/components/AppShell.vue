@@ -15,11 +15,14 @@ const toggleDrawer = (): void => {
 const auth = useAuthStore();
 const router = useRouter();
 
-// "Membres" is visible to anyone with admin rights in the current
-// tenant — a freshly-promoted cabinet_admin sees the link without
-// having to be a super_admin.
-const isAdmin = computed(
-  () => auth.user?.isSuperAdmin === true || auth.currentTenant?.role === 'cabinet_admin',
+// "Membres" is visible to cabinet_admin only — they manage their own
+// tenant's members and the link points to /admin/users with no query
+// params (their tenant comes from the auth context). super_admin
+// reaches the same view *scoped to a specific tenant* via the "Gérer
+// les membres" button on /admin/tenants, so a context-less sidebar
+// link would be misleading for them.
+const showMembersLink = computed(
+  () => auth.user?.isSuperAdmin !== true && auth.currentTenant?.role === 'cabinet_admin',
 );
 
 const onLogout = async (): Promise<void> => {
@@ -73,7 +76,7 @@ const onLogout = async (): Promise<void> => {
           Cabinets
         </RouterLink>
         <RouterLink
-          v-if="isAdmin"
+          v-if="showMembersLink"
           to="/admin/users"
           class="px-3 py-2 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
           @click="drawerOpen = false"
