@@ -28,3 +28,14 @@ export const missionStatus = pgEnum('mission_status', [
   'submitted',
   'closed',
 ]);
+
+// Lifecycle of a questionnaire template version. `draft` is the only
+// mutable state; `published` is frozen once set and may only transition
+// to `archived`; `archived` is fully frozen. Enforcement lives in the
+// 0005 migration via a constraint trigger — see docs/adr/0004 for the
+// motivation (immutable snapshot per published version).
+export const questionnaireTemplateVersionStatus = pgEnum('questionnaire_template_version_status', [
+  'draft',
+  'published',
+  'archived',
+]);
