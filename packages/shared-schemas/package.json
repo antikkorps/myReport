@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "@sinclair/typebox": "0.34.48",
-    "zod": "4.3.6"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "vitest": "4.1.5"
