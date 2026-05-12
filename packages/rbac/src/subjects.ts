@@ -51,6 +51,16 @@ export interface TemplateSubject {
   readonly tenantId: string;
 }
 
+export type TemplateVersionStatus = 'draft' | 'published' | 'archived';
+
+export interface TemplateVersionSubject {
+  readonly __subject: 'TemplateVersion';
+  readonly id: string;
+  readonly tenantId: string;
+  readonly templateId: string;
+  readonly status: TemplateVersionStatus;
+}
+
 export type Subject =
   | TenantSubject
   | UserSubject
@@ -58,7 +68,8 @@ export type Subject =
   | MissionSubject
   | MissionMemberSubject
   | InvitationSubject
-  | TemplateSubject;
+  | TemplateSubject
+  | TemplateVersionSubject;
 
 export type SubjectName = Subject['__subject'];
 
@@ -70,4 +81,5 @@ export const SUBJECT_NAMES: readonly SubjectName[] = [
   'MissionMember',
   'Invitation',
   'Template',
+  'TemplateVersion',
 ] as const;

@@ -24,6 +24,7 @@
     "@fastify/type-provider-typebox": "6.1.0",
     "@myreport/db": "workspace:*",
     "@myreport/email": "workspace:*",
+    "@myreport/questionnaire-schema": "workspace:*",
     "@myreport/rbac": "workspace:*",
     "@myreport/shared-schemas": "workspace:*",
     "@sinclair/typebox": "0.34.48",
