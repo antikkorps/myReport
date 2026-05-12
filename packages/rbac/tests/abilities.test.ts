@@ -117,6 +117,45 @@ describe('cabinet_admin', () => {
     );
     expect(admin.can('read', { __subject: 'Template', id: 'tpl', tenantId: TENANT_B })).toBe(false);
   });
+
+  it('manages questionnaire template versions of its own tenant only', () => {
+    expect(
+      admin.can('create', {
+        __subject: 'TemplateVersion',
+        id: 'v',
+        tenantId: TENANT_A,
+        templateId: 'tpl',
+        status: 'draft',
+      }),
+    ).toBe(true);
+    expect(
+      admin.can('update', {
+        __subject: 'TemplateVersion',
+        id: 'v',
+        tenantId: TENANT_A,
+        templateId: 'tpl',
+        status: 'draft',
+      }),
+    ).toBe(true);
+    expect(
+      admin.can('delete', {
+        __subject: 'TemplateVersion',
+        id: 'v',
+        tenantId: TENANT_A,
+        templateId: 'tpl',
+        status: 'draft',
+      }),
+    ).toBe(true);
+    expect(
+      admin.can('read', {
+        __subject: 'TemplateVersion',
+        id: 'v',
+        tenantId: TENANT_B,
+        templateId: 'tpl',
+        status: 'draft',
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('auditor — mission member', () => {
@@ -221,6 +260,27 @@ describe('auditor — mission member', () => {
     expect(auditor.can('update', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
       false,
     );
+  });
+
+  it('cannot touch template versions at all (read access will land with the mission story)', () => {
+    expect(
+      auditor.can('read', {
+        __subject: 'TemplateVersion',
+        id: 'v',
+        tenantId: TENANT_A,
+        templateId: 'tpl',
+        status: 'published',
+      }),
+    ).toBe(false);
+    expect(
+      auditor.can('update', {
+        __subject: 'TemplateVersion',
+        id: 'v',
+        tenantId: TENANT_A,
+        templateId: 'tpl',
+        status: 'draft',
+      }),
+    ).toBe(false);
   });
 });
 

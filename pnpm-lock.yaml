@@ -66,6 +66,9 @@ importers:
       '@myreport/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@myreport/questionnaire-schema':
+        specifier: workspace:*
+        version: link:../../packages/questionnaire-schema
       '@myreport/rbac':
         specifier: workspace:*
         version: link:../../packages/rbac
