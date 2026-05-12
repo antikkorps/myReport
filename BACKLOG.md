@@ -48,7 +48,11 @@ Single source of truth pour suivre l'avancement. Mis à jour à chaque fin d'ét
 
 ## Phase 3 — Cœur métier
 
-- [ ] **Templates questionnaires** — éditeur Monaco (JSON validé par méta-schema TypeBox), versionnage immuable.
+- [~] **Templates questionnaires** — éditeur Monaco (JSON validé par méta-schema TypeBox), versionnage immuable. Story découpée en 4 PRs (schema + DB + API + front), et éventuellement une 5e si on extrait le renderer.
+  - [x] **PR 1 — ADR 0004 + package `@myreport/questionnaire-schema`** : DSL TypeBox (union discriminée `kind` : `section`, `text`, `longText`, `number`, `boolean`, `singleChoice`, `multiChoice`, `scale`, `date`, `attachment`, `repeater`), root `version: 1` réservé pour évolutions DSL futures. Sections non imbriquables au niveau du type (`TSectionContent = TLeafQuestion | TRepeater`) ; repeater accepte uniquement des leaves (pas de repeater dans repeater, pas de section dans repeater). `validateQuestionnaireSchema(input)` en deux passes : shape via TypeBox `Value.Check`/`Value.Errors` (code `SHAPE`) puis règles structurelles (codes `DUPLICATE_ID`, `INVALID_RANGE`, `INVALID_PATTERN`, `DUPLICATE_OPTION_VALUE`, `INVALID_INTEGER_BOUND`, `INVALID_MIME`, `INVALID_DATE`). IDs unifiés en un seul namespace global (sections + leaves + repeater children) — simpler pour le renderer. Paths d'erreurs au format `sections[0].questions[1].options[2]` (conversion JSON Pointer → friendly). `toJsonSchema()` exporte un deep-copy JSON-Schema-compatible pour Monaco (mutation-safe). `walkQuestionnaire(schema, visit)` exposé pour les futurs consumers (renderer, report-engine, IA cache). 53 tests (12 happy paths un par kind + multi-section + descriptions ; 8 top-level shape ; 4 id-uniqueness ; 3 text/longText ; 3 number ; 6 choice ; 3 scale ; 3 date ; 2 attachment ; 3 repeater ; 3 path formatting ; 3 JSON Schema export ; 1 walk). Edge cases listés *avant* code, chacun un test. *(2026-05-12)*
+  - [ ] **PR 2 — DB : `questionnaire_templates` + `questionnaire_template_versions` + RLS**.
+  - [ ] **PR 3 — API endpoints (CRUD templates + versions + publish/archive)**.
+  - [ ] **PR 4 — front éditeur Monaco**.
 - [ ] **Missions** — CRUD, assignation d'auditors, cycle `draft → in_progress → submitted → closed`.
 - [ ] **Remplissage** — formulaire dynamique généré depuis le `schema` JSONB du template version, validation type-aware, pièces jointes vers S3.
 - [ ] **Invitation auditee** — email + lien magique scopé mission, écran de remplissage allégé.
