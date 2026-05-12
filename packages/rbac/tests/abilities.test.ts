@@ -104,6 +104,19 @@ describe('cabinet_admin', () => {
       }),
     ).toBe(false);
   });
+
+  it('manages questionnaire templates of its own tenant only', () => {
+    expect(admin.can('create', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
+      true,
+    );
+    expect(admin.can('update', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
+      true,
+    );
+    expect(admin.can('delete', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
+      true,
+    );
+    expect(admin.can('read', { __subject: 'Template', id: 'tpl', tenantId: TENANT_B })).toBe(false);
+  });
 });
 
 describe('auditor — mission member', () => {
@@ -196,6 +209,18 @@ describe('auditor — mission member', () => {
         role: 'auditor',
       }),
     ).toBe(false);
+  });
+
+  it('cannot touch questionnaire templates at all', () => {
+    expect(auditor.can('read', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
+      false,
+    );
+    expect(auditor.can('create', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
+      false,
+    );
+    expect(auditor.can('update', { __subject: 'Template', id: 'tpl', tenantId: TENANT_A })).toBe(
+      false,
+    );
   });
 });
 
