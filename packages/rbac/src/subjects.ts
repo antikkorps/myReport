@@ -45,13 +45,20 @@ export interface InvitationSubject {
   readonly role: TenantRole;
 }
 
+export interface TemplateSubject {
+  readonly __subject: 'Template';
+  readonly id: string;
+  readonly tenantId: string;
+}
+
 export type Subject =
   | TenantSubject
   | UserSubject
   | MembershipSubject
   | MissionSubject
   | MissionMemberSubject
-  | InvitationSubject;
+  | InvitationSubject
+  | TemplateSubject;
 
 export type SubjectName = Subject['__subject'];
 
@@ -62,4 +69,5 @@ export const SUBJECT_NAMES: readonly SubjectName[] = [
   'Mission',
   'MissionMember',
   'Invitation',
+  'Template',
 ] as const;
