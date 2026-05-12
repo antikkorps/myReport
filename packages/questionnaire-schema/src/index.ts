@@ -1,0 +1,46 @@
+export { toJsonSchema } from './jsonSchema.ts';
+export {
+  type AnyKind,
+  type AnyNode,
+  type AttachmentQuestion,
+  type BooleanQuestion,
+  type ChoiceOption,
+  type DateQuestion,
+  type LeafKind,
+  type LeafQuestion,
+  type LongTextQuestion,
+  type MultiChoiceQuestion,
+  type NumberQuestion,
+  QUESTION_KINDS,
+  type RepeaterQuestion,
+  type ScaleQuestion,
+  type Section,
+  type SectionContent,
+  type SingleChoiceQuestion,
+  TAttachment,
+  TBoolean,
+  TChoiceOption,
+  TDate,
+  type TextQuestion,
+  TLeafQuestion,
+  TLongText,
+  TMultiChoice,
+  TNumber,
+  TRepeater,
+  TScale,
+  TSection,
+  TSectionContent,
+  TSingleChoice,
+  TText,
+} from './questions.ts';
+export {
+  QUESTIONNAIRE_SCHEMA_FORMAT_VERSION,
+  type QuestionnaireSchema,
+  TQuestionnaireSchema,
+} from './schema.ts';
+export {
+  type ValidationIssue,
+  type ValidationResult,
+  validateQuestionnaireSchema,
+} from './validate.ts';
+export { type Visitor, walkQuestionnaire } from './walk.ts';
