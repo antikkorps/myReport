@@ -45,6 +45,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
+    path: '/admin/templates/:id',
+    name: 'admin-template-detail',
+    component: () => import('../views/AdminTemplateDetailView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/templates/:id/versions/:vid',
+    name: 'admin-template-version',
+    component: () => import('../views/AdminTemplateVersionView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
     // Public — the visitor lands here from an email link before having
     // any session. The view materialises the session itself on success.
     path: '/invitations/accept',

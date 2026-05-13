@@ -614,6 +614,133 @@ describe('questionnaire template versions — API', () => {
     });
   });
 
+  describe('POST /promote', () => {
+    it('promotes a published version to current and pins it on the template', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-ok');
+      const v1 = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${v1}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const v2 = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${v2}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+
+      // After v2 is published the template still pins v1 (auto-set on
+      // first publish only). Promoting v2 moves the pin.
+      const before = await fetchTemplate(tokenA, tplId);
+      expect(before.currentVersionId).toBe(v1);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${v2}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().id).toBe(v2);
+      expect(res.json().status).toBe('published');
+      const after = await fetchTemplate(tokenA, tplId);
+      expect(after.currentVersionId).toBe(v2);
+    });
+
+    it('promoting the already-current version is idempotent — 200', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-idem');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const tpl = await fetchTemplate(tokenA, tplId);
+      expect(tpl.currentVersionId).toBe(vid);
+    });
+
+    it('promoting a draft returns 409 VERSION_NOT_PUBLISHED', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-draft');
+      const vid = await createDraft(tokenA, tplId);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe('VERSION_NOT_PUBLISHED');
+    });
+
+    it('promoting an archived version returns 409 VERSION_NOT_PUBLISHED', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-archived');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/archive`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe('VERSION_NOT_PUBLISHED');
+    });
+
+    it('returns 404 when the version id is unknown', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-404');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${uuidv7()}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('cross-tenant — 404 (RLS hides the version)', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-cross');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenB}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('auditor — 403', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-auditor');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenAuditor}` },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+  });
+
   describe('DELETE /templates/:id/versions/:vid', () => {
     it('deletes a draft — 204', async () => {
       const tplId = await createTemplate(tokenA, 'v-delete-draft');

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@myreport/api-client": "workspace:*",
+    "@myreport/questionnaire-schema": "workspace:*",
     "@myreport/shared-schemas": "workspace:*",
     "@primevue/themes": "4.5.4",
     "pinia": "3.0.4",

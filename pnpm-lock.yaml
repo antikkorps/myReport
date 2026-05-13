@@ -118,6 +118,9 @@ importers:
       '@myreport/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@myreport/questionnaire-schema':
+        specifier: workspace:*
+        version: link:../../packages/questionnaire-schema
       '@myreport/shared-schemas':
         specifier: workspace:*
         version: link:../../packages/shared-schemas

@@ -526,6 +526,75 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
     },
   );
 
+  app.post(
+    '/templates/:id/versions/:vid/promote',
+    {
+      preHandler: [app.requireAuth, app.requireAbility('update', 'TemplateVersion')],
+      schema: {
+        params: TBTemplateAndVersionParams,
+        response: {
+          200: TBQuestionnaireTemplateVersion,
+          401: TBErrorResponse,
+          403: TBErrorResponse,
+          404: TBErrorResponse,
+          409: TBErrorResponse,
+        },
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const auth = request.auth;
+      if (!auth) {
+        return reply.code(401).send({ code: 'UNAUTHORIZED', message: 'authentication required' });
+      }
+      const tx = txFor(auth);
+      if (!tx)
+        return reply.code(403).send({ code: 'NO_TENANT', message: 'caller has no active tenant' });
+
+      const { id: templateId, vid } = request.params;
+      const result = await tx(async (txdb) => {
+        const rows = await txdb
+          .select(versionColumns)
+          .from(schema.questionnaireTemplateVersions)
+          .where(
+            and(
+              eq(schema.questionnaireTemplateVersions.id, vid),
+              eq(schema.questionnaireTemplateVersions.templateId, templateId),
+            ),
+          )
+          .limit(1);
+        const found = rows[0];
+        if (!found) return { kind: 'not-found' as const };
+        // Only published versions are eligible. Drafts and archived
+        // versions cannot become the pinned current — drafts because
+        // an unpublished schema must never be served to missions,
+        // archived because the cabinet explicitly retired it.
+        if (found.status !== 'published') {
+          return { kind: 'not-published' as const, status: found.status };
+        }
+        // Idempotent: setting current_version_id to the same vid is a
+        // no-op write, but we still return 200 with the row so the
+        // client can refresh state without a second GET.
+        await txdb
+          .update(schema.questionnaireTemplates)
+          .set({ currentVersionId: vid })
+          .where(eq(schema.questionnaireTemplates.id, templateId));
+        return { kind: 'ok' as const, row: found };
+      });
+
+      if (result.kind === 'not-found') {
+        return reply.code(404).send({ code: 'NOT_FOUND', message: 'version not found' });
+      }
+      if (result.kind === 'not-published') {
+        return reply.code(409).send({
+          code: 'VERSION_NOT_PUBLISHED',
+          message: `version is ${result.status}; only published versions may be promoted`,
+        });
+      }
+      return reply.send(toVersionResponse(result.row));
+    },
+  );
+
   app.delete(
     '/templates/:id/versions/:vid',
     {

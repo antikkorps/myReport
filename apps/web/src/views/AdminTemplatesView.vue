@@ -59,6 +59,10 @@ const templates = ref<QuestionnaireTemplate[]>([]);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 
+function openTemplate(row: QuestionnaireTemplate): void {
+  void router.push({ name: 'admin-template-detail', params: { id: row.id } });
+}
+
 async function refresh(): Promise<void> {
   if (tenantOverrideMissing.value) {
     templates.value = [];
@@ -376,6 +380,13 @@ async function confirmRemove(): Promise<void> {
           <Column header="Actions">
             <template #body="{ data }">
               <div class="flex flex-wrap gap-2">
+                <Button
+                  label="Ouvrir"
+                  icon="pi pi-arrow-right"
+                  size="small"
+                  data-testid="open-template"
+                  @click="openTemplate(data)"
+                />
                 <Button
                   label="Modifier"
                   icon="pi pi-pencil"
