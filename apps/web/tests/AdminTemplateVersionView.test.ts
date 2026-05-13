@@ -9,6 +9,28 @@ import { createMemoryHistory, createRouter, type RouteRecordRaw } from 'vue-rout
 import { resetApiClientForTests } from '../src/api/client.ts';
 import AdminTemplateVersionView from '../src/views/AdminTemplateVersionView.vue';
 
+// Stub the Monaco wrapper so the view tests stay focused on view
+// behaviour (buffer plumbing, validation pipeline, lifecycle). The
+// stub keeps the same v-model contract and exposes a plain textarea
+// under the historical `schema-textarea` test id so existing
+// assertions (setValue + dirty detection) keep working.
+vi.mock('../src/components/MonacoJsonEditor.vue', () => ({
+  default: {
+    name: 'MonacoJsonEditorStub',
+    props: ['modelValue', 'readOnly', 'schema', 'schemaUri'],
+    emits: ['update:modelValue', 'save'],
+    template: `
+      <textarea
+        data-testid="schema-textarea"
+        :value="modelValue"
+        :readonly="readOnly"
+        :disabled="readOnly"
+        @input="$emit('update:modelValue', $event.target.value)"
+      />
+    `,
+  },
+}));
+
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
     value: (query: string) => ({

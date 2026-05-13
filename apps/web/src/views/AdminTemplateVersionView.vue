@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ApiError } from '@myreport/api-client';
-import { validateQuestionnaireSchema } from '@myreport/questionnaire-schema';
+import { toJsonSchema, validateQuestionnaireSchema } from '@myreport/questionnaire-schema';
 import type { QuestionnaireTemplate, QuestionnaireTemplateVersion } from '@myreport/shared-schemas';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Dialog from 'primevue/dialog';
 import Message from 'primevue/message';
-import Textarea from 'primevue/textarea';
 import { useToast } from 'primevue/usetoast';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { useApiClient } from '../api/client.ts';
+import MonacoJsonEditor from '../components/MonacoJsonEditor.vue';
 
 const client = useApiClient();
 const toast = useToast();
@@ -259,6 +259,15 @@ function statusBannerSeverity(): 'info' | 'warn' {
   if (version.value?.status === 'archived') return 'warn';
   return 'info';
 }
+
+// Generated once: the JSON Schema is derived from the static TypeBox
+// DSL and doesn't depend on any runtime input.
+const monacoJsonSchema = toJsonSchema();
+const editorRef = ref<{ formatDocument(): void } | null>(null);
+
+function onFormat(): void {
+  editorRef.value?.formatDocument();
+}
 </script>
 
 <template>
@@ -361,24 +370,32 @@ function statusBannerSeverity(): 'info' | 'warn' {
               data-testid="archive-version"
               @click="openLifecycle('archive')"
             />
+            <Button
+              v-if="version.status === 'draft'"
+              label="Formater"
+              icon="pi pi-align-left"
+              outlined
+              size="small"
+              data-testid="format-version"
+              @click="onFormat"
+            />
           </div>
 
-          <label class="flex flex-col gap-1">
+          <div class="flex flex-col gap-1">
             <span class="text-sm text-surface-600 dark:text-surface-400">
               Schéma JSON
               <span v-if="dirty" class="text-xs italic">
                 · Modifications non enregistrées
               </span>
             </span>
-            <Textarea
+            <MonacoJsonEditor
+              ref="editorRef"
               v-model="buffer"
-              :rows="22"
-              class="font-mono text-sm"
-              :readonly="isReadOnly"
-              :disabled="isReadOnly"
-              data-testid="schema-textarea"
+              :read-only="isReadOnly"
+              :schema="monacoJsonSchema"
+              @save="onSave"
             />
-          </label>
+          </div>
 
           <Message
             v-if="parseError"
