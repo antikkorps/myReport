@@ -8,6 +8,7 @@ import {
   TBQuestionnaireTemplateVersion,
   TBQuestionnaireTemplateVersionListQuery,
   TBQuestionnaireTemplateVersionListResponse,
+  TBStaleVersionError,
   TBUpdateQuestionnaireTemplateVersionRequest,
 } from '@myreport/shared-schemas';
 import { Type } from '@sinclair/typebox';
@@ -313,7 +314,11 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
           401: TBErrorResponse,
           403: TBErrorResponse,
           404: TBErrorResponse,
-          409: TBErrorResponse,
+          // STALE_VERSION must come first so fast-json-stringify picks
+          // its structured `details` payload instead of swallowing it
+          // through the bare TBErrorResponse branch (same trick as the
+          // SCHEMA_INVALID envelope on 400).
+          409: Type.Union([TBStaleVersionError, TBErrorResponse]),
         },
         security: [{ bearerAuth: [] }],
       },
@@ -337,10 +342,19 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
       }
 
       const { id: templateId, vid } = request.params;
+      // Optimistic-lock token. Parsed once outside the tx; we compare
+      // via `getTime()` to stay independent of the ISO encoding the
+      // client echoes back (millisecond truncation, trailing zeros).
+      const expectedAtMs = new Date(request.body.expectedUpdatedAt).getTime();
 
       const result = await tx(async (txdb) => {
         const rows = await txdb
-          .select({ id: versionColumns.id, status: versionColumns.status })
+          .select({
+            id: versionColumns.id,
+            status: versionColumns.status,
+            updatedAt: versionColumns.updatedAt,
+            schema: versionColumns.schema,
+          })
           .from(schema.questionnaireTemplateVersions)
           .where(
             and(
@@ -351,8 +365,19 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
           .limit(1);
         const found = rows[0];
         if (!found) return { kind: 'not-found' as const };
+        // State check runs before the stale check: if the version is
+        // no longer a draft (e.g. published in another tab), surface
+        // VERSION_NOT_DRAFT so the client reloads into the read-only
+        // view rather than offering to overwrite a published row.
         if (found.status !== 'draft') {
           return { kind: 'not-draft' as const, status: found.status };
+        }
+        if (found.updatedAt.getTime() !== expectedAtMs) {
+          return {
+            kind: 'stale' as const,
+            currentUpdatedAt: found.updatedAt,
+            currentSchema: found.schema,
+          };
         }
         const [row] = await txdb
           .update(schema.questionnaireTemplateVersions)
@@ -370,6 +395,16 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
         return reply.code(409).send({
           code: 'VERSION_NOT_DRAFT',
           message: `version is ${result.status}; only drafts may be edited`,
+        });
+      }
+      if (result.kind === 'stale') {
+        return reply.code(409).send({
+          code: 'STALE_VERSION',
+          message: 'version was modified since it was loaded',
+          details: {
+            currentUpdatedAt: result.currentUpdatedAt.toISOString(),
+            currentSchema: result.currentSchema as Record<string, unknown>,
+          },
         });
       }
       return reply.send(toVersionResponse(result.row));
@@ -520,6 +555,75 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
         return reply.code(409).send({
           code: 'VERSION_NOT_PUBLISHED',
           message: `version is ${result.status}; only published versions may be archived`,
+        });
+      }
+      return reply.send(toVersionResponse(result.row));
+    },
+  );
+
+  app.post(
+    '/templates/:id/versions/:vid/promote',
+    {
+      preHandler: [app.requireAuth, app.requireAbility('update', 'TemplateVersion')],
+      schema: {
+        params: TBTemplateAndVersionParams,
+        response: {
+          200: TBQuestionnaireTemplateVersion,
+          401: TBErrorResponse,
+          403: TBErrorResponse,
+          404: TBErrorResponse,
+          409: TBErrorResponse,
+        },
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const auth = request.auth;
+      if (!auth) {
+        return reply.code(401).send({ code: 'UNAUTHORIZED', message: 'authentication required' });
+      }
+      const tx = txFor(auth);
+      if (!tx)
+        return reply.code(403).send({ code: 'NO_TENANT', message: 'caller has no active tenant' });
+
+      const { id: templateId, vid } = request.params;
+      const result = await tx(async (txdb) => {
+        const rows = await txdb
+          .select(versionColumns)
+          .from(schema.questionnaireTemplateVersions)
+          .where(
+            and(
+              eq(schema.questionnaireTemplateVersions.id, vid),
+              eq(schema.questionnaireTemplateVersions.templateId, templateId),
+            ),
+          )
+          .limit(1);
+        const found = rows[0];
+        if (!found) return { kind: 'not-found' as const };
+        // Only published versions are eligible. Drafts and archived
+        // versions cannot become the pinned current — drafts because
+        // an unpublished schema must never be served to missions,
+        // archived because the cabinet explicitly retired it.
+        if (found.status !== 'published') {
+          return { kind: 'not-published' as const, status: found.status };
+        }
+        // Idempotent: setting current_version_id to the same vid is a
+        // no-op write, but we still return 200 with the row so the
+        // client can refresh state without a second GET.
+        await txdb
+          .update(schema.questionnaireTemplates)
+          .set({ currentVersionId: vid })
+          .where(eq(schema.questionnaireTemplates.id, templateId));
+        return { kind: 'ok' as const, row: found };
+      });
+
+      if (result.kind === 'not-found') {
+        return reply.code(404).send({ code: 'NOT_FOUND', message: 'version not found' });
+      }
+      if (result.kind === 'not-published') {
+        return reply.code(409).send({
+          code: 'VERSION_NOT_PUBLISHED',
+          message: `version is ${result.status}; only published versions may be promoted`,
         });
       }
       return reply.send(toVersionResponse(result.row));

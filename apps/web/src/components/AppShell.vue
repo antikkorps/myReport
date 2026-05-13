@@ -25,6 +25,13 @@ const showMembersLink = computed(
   () => auth.user?.isSuperAdmin !== true && auth.currentTenant?.role === 'cabinet_admin',
 );
 
+// Templates follows the same rule as "Membres": super_admin reaches
+// it scoped per-tenant via the "Gérer les templates" button on
+// /admin/tenants, so the sidebar entry stays cabinet_admin only.
+const showTemplatesLink = computed(
+  () => auth.user?.isSuperAdmin !== true && auth.currentTenant?.role === 'cabinet_admin',
+);
+
 const onLogout = async (): Promise<void> => {
   await auth.logout();
   await router.push({ name: 'login' });
@@ -82,6 +89,14 @@ const onLogout = async (): Promise<void> => {
           @click="drawerOpen = false"
         >
           Membres
+        </RouterLink>
+        <RouterLink
+          v-if="showTemplatesLink"
+          to="/admin/templates"
+          class="px-3 py-2 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+          @click="drawerOpen = false"
+        >
+          Templates
         </RouterLink>
         <RouterLink
           v-if="!auth.isAuthenticated"

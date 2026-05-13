@@ -6,6 +6,9 @@ import App from './App.vue';
 import { router } from './router/index.ts';
 import { useAuthStore } from './stores/auth.ts';
 import { NoirSlatePreset } from './theme/preset.ts';
+// Side-effect import: must run before any Monaco editor is mounted so
+// the json/editor workers are registered on `self.MonacoEnvironment`.
+import './monaco-setup.ts';
 import 'primeicons/primeicons.css';
 import './styles.css';
 

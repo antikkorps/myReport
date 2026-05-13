@@ -186,6 +186,21 @@ describe('questionnaire template versions — API', () => {
     return res.json();
   }
 
+  async function fetchVersion(token: string, tplId: string, vid: string) {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/templates/${tplId}/versions/${vid}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    return res.json() as {
+      id: string;
+      schema: Record<string, unknown>;
+      updatedAt: string;
+      status: 'draft' | 'published' | 'archived';
+    };
+  }
+
   describe('POST /templates/:id/versions', () => {
     it('creates the first version with version=1 and status=draft', async () => {
       const tplId = await createTemplate(tokenA, 'v-create-1');
@@ -392,25 +407,32 @@ describe('questionnaire template versions — API', () => {
     it('edits a draft schema and returns the new payload', async () => {
       const tplId = await createTemplate(tokenA, 'v-patch-ok');
       const vid = await createDraft(tokenA, tplId);
+      const before = await fetchVersion(tokenA, tplId, vid);
       const newSchema = sampleSchema('Edited');
       const res = await app.inject({
         method: 'PATCH',
         url: `/templates/${tplId}/versions/${vid}`,
         headers: { authorization: `Bearer ${tokenA}` },
-        payload: { schema: newSchema },
+        payload: { schema: newSchema, expectedUpdatedAt: before.updatedAt },
       });
       expect(res.statusCode).toBe(200);
       expect(res.json().schema.title).toBe('Edited');
+      // `updatedAt` must bump so a second save with the same token fails.
+      expect(res.json().updatedAt).not.toBe(before.updatedAt);
     });
 
     it('rejects invalid DSL with 400 SCHEMA_INVALID', async () => {
       const tplId = await createTemplate(tokenA, 'v-patch-bad');
       const vid = await createDraft(tokenA, tplId);
+      const before = await fetchVersion(tokenA, tplId, vid);
       const res = await app.inject({
         method: 'PATCH',
         url: `/templates/${tplId}/versions/${vid}`,
         headers: { authorization: `Bearer ${tokenA}` },
-        payload: { schema: { version: 2, title: 'X', sections: [] } },
+        payload: {
+          schema: { version: 2, title: 'X', sections: [] },
+          expectedUpdatedAt: before.updatedAt,
+        },
       });
       expect(res.statusCode).toBe(400);
       expect(res.json().code).toBe('SCHEMA_INVALID');
@@ -424,11 +446,12 @@ describe('questionnaire template versions — API', () => {
         url: `/templates/${tplId}/versions/${vid}/publish`,
         headers: { authorization: `Bearer ${tokenA}` },
       });
+      const after = await fetchVersion(tokenA, tplId, vid);
       const res = await app.inject({
         method: 'PATCH',
         url: `/templates/${tplId}/versions/${vid}`,
         headers: { authorization: `Bearer ${tokenA}` },
-        payload: { schema: sampleSchema() },
+        payload: { schema: sampleSchema(), expectedUpdatedAt: after.updatedAt },
       });
       expect(res.statusCode).toBe(409);
       expect(res.json().code).toBe('VERSION_NOT_DRAFT');
@@ -447,11 +470,12 @@ describe('questionnaire template versions — API', () => {
         url: `/templates/${tplId}/versions/${vid}/archive`,
         headers: { authorization: `Bearer ${tokenA}` },
       });
+      const after = await fetchVersion(tokenA, tplId, vid);
       const res = await app.inject({
         method: 'PATCH',
         url: `/templates/${tplId}/versions/${vid}`,
         headers: { authorization: `Bearer ${tokenA}` },
-        payload: { schema: sampleSchema() },
+        payload: { schema: sampleSchema(), expectedUpdatedAt: after.updatedAt },
       });
       expect(res.statusCode).toBe(409);
     });
@@ -459,13 +483,68 @@ describe('questionnaire template versions — API', () => {
     it('cross-tenant — 404', async () => {
       const tplId = await createTemplate(tokenA, 'v-patch-cross');
       const vid = await createDraft(tokenA, tplId);
+      const before = await fetchVersion(tokenA, tplId, vid);
       const res = await app.inject({
         method: 'PATCH',
         url: `/templates/${tplId}/versions/${vid}`,
         headers: { authorization: `Bearer ${tokenB}` },
-        payload: { schema: sampleSchema() },
+        payload: { schema: sampleSchema(), expectedUpdatedAt: before.updatedAt },
       });
       expect(res.statusCode).toBe(404);
+    });
+
+    // --- Optimistic concurrency control (PR 4d) ---
+
+    it('409 STALE_VERSION when expectedUpdatedAt does not match', async () => {
+      const tplId = await createTemplate(tokenA, 'v-patch-stale');
+      const vid = await createDraft(tokenA, tplId);
+      const before = await fetchVersion(tokenA, tplId, vid);
+      // First save bumps updatedAt so the second call with the stale
+      // token fails.
+      const firstSchema = sampleSchema('First');
+      const first = await app.inject({
+        method: 'PATCH',
+        url: `/templates/${tplId}/versions/${vid}`,
+        headers: { authorization: `Bearer ${tokenA}` },
+        payload: { schema: firstSchema, expectedUpdatedAt: before.updatedAt },
+      });
+      expect(first.statusCode).toBe(200);
+      const after = first.json();
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/templates/${tplId}/versions/${vid}`,
+        headers: { authorization: `Bearer ${tokenA}` },
+        payload: { schema: sampleSchema('Second'), expectedUpdatedAt: before.updatedAt },
+      });
+      expect(res.statusCode).toBe(409);
+      const body = res.json();
+      expect(body.code).toBe('STALE_VERSION');
+      expect(body.details.currentUpdatedAt).toBe(after.updatedAt);
+      expect(body.details.currentSchema.title).toBe('First');
+    });
+
+    it('400 when expectedUpdatedAt is missing from the body', async () => {
+      const tplId = await createTemplate(tokenA, 'v-patch-no-token');
+      const vid = await createDraft(tokenA, tplId);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/templates/${tplId}/versions/${vid}`,
+        headers: { authorization: `Bearer ${tokenA}` },
+        payload: { schema: sampleSchema() },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('400 when expectedUpdatedAt is malformed', async () => {
+      const tplId = await createTemplate(tokenA, 'v-patch-bad-token');
+      const vid = await createDraft(tokenA, tplId);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/templates/${tplId}/versions/${vid}`,
+        headers: { authorization: `Bearer ${tokenA}` },
+        payload: { schema: sampleSchema(), expectedUpdatedAt: 'not-an-iso-date' },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 
@@ -611,6 +690,133 @@ describe('questionnaire template versions — API', () => {
       });
       const tpl = await fetchTemplate(tokenA, tplId);
       expect(tpl.currentVersionId).toBe(vid);
+    });
+  });
+
+  describe('POST /promote', () => {
+    it('promotes a published version to current and pins it on the template', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-ok');
+      const v1 = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${v1}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const v2 = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${v2}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+
+      // After v2 is published the template still pins v1 (auto-set on
+      // first publish only). Promoting v2 moves the pin.
+      const before = await fetchTemplate(tokenA, tplId);
+      expect(before.currentVersionId).toBe(v1);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${v2}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().id).toBe(v2);
+      expect(res.json().status).toBe('published');
+      const after = await fetchTemplate(tokenA, tplId);
+      expect(after.currentVersionId).toBe(v2);
+    });
+
+    it('promoting the already-current version is idempotent — 200', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-idem');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const tpl = await fetchTemplate(tokenA, tplId);
+      expect(tpl.currentVersionId).toBe(vid);
+    });
+
+    it('promoting a draft returns 409 VERSION_NOT_PUBLISHED', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-draft');
+      const vid = await createDraft(tokenA, tplId);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe('VERSION_NOT_PUBLISHED');
+    });
+
+    it('promoting an archived version returns 409 VERSION_NOT_PUBLISHED', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-archived');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/archive`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe('VERSION_NOT_PUBLISHED');
+    });
+
+    it('returns 404 when the version id is unknown', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-404');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${uuidv7()}/promote`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('cross-tenant — 404 (RLS hides the version)', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-cross');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenB}` },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('auditor — 403', async () => {
+      const tplId = await createTemplate(tokenA, 'v-promote-auditor');
+      const vid = await createDraft(tokenA, tplId);
+      await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/publish`,
+        headers: { authorization: `Bearer ${tokenA}` },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/templates/${tplId}/versions/${vid}/promote`,
+        headers: { authorization: `Bearer ${tokenAuditor}` },
+      });
+      expect(res.statusCode).toBe(403);
     });
   });
 

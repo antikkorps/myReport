@@ -147,7 +147,28 @@ export function createApiClientCore(config: ApiClientConfig): ApiClientCore {
           errorParse.error,
         );
       }
-      throw new ApiError(response.status, errorParse.data);
+      // Some error envelopes carry extra top-level fields outside the
+      // standard ErrorResponse shape (e.g. SCHEMA_INVALID returns
+      // `issues[]` at the root). Zod's strip mode would silently drop
+      // them, so we merge the raw parsed body into `details` whenever
+      // the server omits an explicit `details` object. This keeps the
+      // client agnostic to specific envelopes while still surfacing
+      // the extras to UI code.
+      const envelope = errorParse.data;
+      let mergedDetails = envelope.details;
+      if (!mergedDetails && parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const extras: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (key === 'code' || key === 'message' || key === 'details') continue;
+          extras[key] = value;
+        }
+        if (Object.keys(extras).length > 0) mergedDetails = extras;
+      }
+      throw new ApiError(response.status, {
+        code: envelope.code,
+        message: envelope.message,
+        ...(mergedDetails ? { details: mergedDetails } : {}),
+      });
     }
 
     if (!responseSchema) {

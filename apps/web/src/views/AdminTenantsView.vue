@@ -28,6 +28,11 @@ function manageMembers(tenantId: string): void {
   void router.push({ name: 'admin-users', query: { tenantId } });
 }
 
+function manageTemplates(tenantId: string): void {
+  // Same drill-in pattern, scoped to questionnaire templates.
+  void router.push({ name: 'admin-templates', query: { tenantId } });
+}
+
 const name = ref('');
 const slug = ref('');
 const adminEmail = ref('');
@@ -242,14 +247,24 @@ async function copyInvitationUrl(): Promise<void> {
           </Column>
           <Column header="Actions">
             <template #body="{ data }">
-              <Button
-                label="Gérer les membres"
-                icon="pi pi-users"
-                outlined
-                size="small"
-                data-testid="manage-members"
-                @click="manageMembers(data.id)"
-              />
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  label="Gérer les membres"
+                  icon="pi pi-users"
+                  outlined
+                  size="small"
+                  data-testid="manage-members"
+                  @click="manageMembers(data.id)"
+                />
+                <Button
+                  label="Gérer les templates"
+                  icon="pi pi-file"
+                  outlined
+                  size="small"
+                  data-testid="manage-templates"
+                  @click="manageTemplates(data.id)"
+                />
+              </div>
             </template>
           </Column>
         </DataTable>
