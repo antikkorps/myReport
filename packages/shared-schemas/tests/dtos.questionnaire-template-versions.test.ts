@@ -6,6 +6,7 @@ import {
   TBQuestionnaireTemplateVersionListQuery,
   TBQuestionnaireTemplateVersionListResponse,
   TBQuestionnaireTemplateVersionStatus,
+  TBStaleVersionError,
   TBUpdateQuestionnaireTemplateVersionRequest,
   ZCreateQuestionnaireTemplateVersionRequest,
   ZQuestionnaireSchemaValidationError,
@@ -13,6 +14,7 @@ import {
   ZQuestionnaireTemplateVersionListQuery,
   ZQuestionnaireTemplateVersionListResponse,
   ZQuestionnaireTemplateVersionStatus,
+  ZStaleVersionError,
   ZUpdateQuestionnaireTemplateVersionRequest,
 } from '../src/dtos/questionnaire-template-versions.ts';
 import { expectParity } from './parity.ts';
@@ -53,13 +55,22 @@ describe('CreateVersionRequest', () => {
 });
 
 describe('UpdateVersionRequest', () => {
-  it('accepts any object schema (same contract as create)', () => {
+  it('accepts schema + expectedUpdatedAt and rejects missing/extra fields', () => {
     expectParity(
       TBUpdateQuestionnaireTemplateVersionRequest,
       ZUpdateQuestionnaireTemplateVersionRequest,
       {
-        valid: [{ schema: SAMPLE }, { schema: {} }],
-        invalid: [{}, { schema: 'not-an-object' }, { schema: SAMPLE, extra: true }],
+        valid: [
+          { schema: SAMPLE, expectedUpdatedAt: ISO },
+          { schema: {}, expectedUpdatedAt: ISO },
+        ],
+        invalid: [
+          {},
+          { schema: SAMPLE }, // missing expectedUpdatedAt
+          { expectedUpdatedAt: ISO }, // missing schema
+          { schema: SAMPLE, expectedUpdatedAt: 'not-a-date' },
+          { schema: SAMPLE, expectedUpdatedAt: ISO, extra: true },
+        ],
       },
     );
   });
@@ -142,6 +153,38 @@ describe('ListResponse + ListQuery', () => {
     expectParity(TBQuestionnaireTemplateVersionListQuery, ZQuestionnaireTemplateVersionListQuery, {
       valid: [{}, { status: 'draft' }, { status: 'all' }],
       invalid: [{ status: 'frozen' }, { status: 42 }],
+    });
+  });
+});
+
+describe('StaleVersionError envelope', () => {
+  it('shapes the 409 payload returned when the optimistic lock fails', () => {
+    expectParity(TBStaleVersionError, ZStaleVersionError, {
+      valid: [
+        {
+          code: 'STALE_VERSION',
+          message: 'version was modified',
+          details: { currentUpdatedAt: ISO, currentSchema: SAMPLE },
+        },
+      ],
+      invalid: [
+        // wrong code
+        {
+          code: 'OTHER',
+          message: 'x',
+          details: { currentUpdatedAt: ISO, currentSchema: SAMPLE },
+        },
+        // missing details
+        { code: 'STALE_VERSION', message: 'x' },
+        // missing currentSchema
+        { code: 'STALE_VERSION', message: 'x', details: { currentUpdatedAt: ISO } },
+        // currentUpdatedAt not ISO
+        {
+          code: 'STALE_VERSION',
+          message: 'x',
+          details: { currentUpdatedAt: 'bad', currentSchema: SAMPLE },
+        },
+      ],
     });
   });
 });

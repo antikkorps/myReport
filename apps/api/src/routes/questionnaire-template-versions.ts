@@ -8,6 +8,7 @@ import {
   TBQuestionnaireTemplateVersion,
   TBQuestionnaireTemplateVersionListQuery,
   TBQuestionnaireTemplateVersionListResponse,
+  TBStaleVersionError,
   TBUpdateQuestionnaireTemplateVersionRequest,
 } from '@myreport/shared-schemas';
 import { Type } from '@sinclair/typebox';
@@ -313,7 +314,11 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
           401: TBErrorResponse,
           403: TBErrorResponse,
           404: TBErrorResponse,
-          409: TBErrorResponse,
+          // STALE_VERSION must come first so fast-json-stringify picks
+          // its structured `details` payload instead of swallowing it
+          // through the bare TBErrorResponse branch (same trick as the
+          // SCHEMA_INVALID envelope on 400).
+          409: Type.Union([TBStaleVersionError, TBErrorResponse]),
         },
         security: [{ bearerAuth: [] }],
       },
@@ -337,10 +342,19 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
       }
 
       const { id: templateId, vid } = request.params;
+      // Optimistic-lock token. Parsed once outside the tx; we compare
+      // via `getTime()` to stay independent of the ISO encoding the
+      // client echoes back (millisecond truncation, trailing zeros).
+      const expectedAtMs = new Date(request.body.expectedUpdatedAt).getTime();
 
       const result = await tx(async (txdb) => {
         const rows = await txdb
-          .select({ id: versionColumns.id, status: versionColumns.status })
+          .select({
+            id: versionColumns.id,
+            status: versionColumns.status,
+            updatedAt: versionColumns.updatedAt,
+            schema: versionColumns.schema,
+          })
           .from(schema.questionnaireTemplateVersions)
           .where(
             and(
@@ -351,8 +365,19 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
           .limit(1);
         const found = rows[0];
         if (!found) return { kind: 'not-found' as const };
+        // State check runs before the stale check: if the version is
+        // no longer a draft (e.g. published in another tab), surface
+        // VERSION_NOT_DRAFT so the client reloads into the read-only
+        // view rather than offering to overwrite a published row.
         if (found.status !== 'draft') {
           return { kind: 'not-draft' as const, status: found.status };
+        }
+        if (found.updatedAt.getTime() !== expectedAtMs) {
+          return {
+            kind: 'stale' as const,
+            currentUpdatedAt: found.updatedAt,
+            currentSchema: found.schema,
+          };
         }
         const [row] = await txdb
           .update(schema.questionnaireTemplateVersions)
@@ -370,6 +395,16 @@ const questionnaireTemplateVersionsRoutes: FastifyPluginAsyncTypebox = async (ap
         return reply.code(409).send({
           code: 'VERSION_NOT_DRAFT',
           message: `version is ${result.status}; only drafts may be edited`,
+        });
+      }
+      if (result.kind === 'stale') {
+        return reply.code(409).send({
+          code: 'STALE_VERSION',
+          message: 'version was modified since it was loaded',
+          details: {
+            currentUpdatedAt: result.currentUpdatedAt.toISOString(),
+            currentSchema: result.currentSchema as Record<string, unknown>,
+          },
         });
       }
       return reply.send(toVersionResponse(result.row));

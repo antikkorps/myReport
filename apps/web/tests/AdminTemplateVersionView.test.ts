@@ -307,6 +307,74 @@ describe('AdminTemplateVersionView', () => {
     expect(wrapper.find('[data-testid="validation-issues"]').text()).toContain('DUPLICATE_ID');
   });
 
+  it('sends expectedUpdatedAt on save and surfaces a Dialog on 409 STALE_VERSION', async () => {
+    const { useApiClient } = await import('../src/api/client.ts');
+    const client = useApiClient();
+    vi.mocked(client.templates.get).mockResolvedValue(sampleTemplate());
+    vi.mocked(client.templateVersions.get).mockResolvedValue(sampleVersion('draft'));
+    const serverSchema = {
+      ...validSchema,
+      title: 'Server-side wins',
+    };
+    vi.mocked(client.templateVersions.update).mockRejectedValueOnce(
+      new ApiError(409, {
+        code: 'STALE_VERSION',
+        message: 'version was modified since it was loaded',
+        details: {
+          currentUpdatedAt: '2026-05-13T12:00:00.000Z',
+          currentSchema: serverSchema,
+        },
+      }),
+    );
+
+    const { wrapper } = await mountAt();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="schema-textarea"]');
+    await textarea.setValue(JSON.stringify(validSchema, null, 2) + '\n');
+    await wrapper.get('[data-testid="save-version"]').trigger('click');
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Verify the client received the optimistic-lock token from load.
+    expect(client.templateVersions.update).toHaveBeenCalledWith(
+      TPL_ID,
+      V_ID,
+      expect.objectContaining({ expectedUpdatedAt: '2026-05-13T10:00:00.000Z' }),
+    );
+
+    // Conflict dialog appears with both action buttons. PrimeVue's
+    // Dialog teleports to document.body so the testids are queried
+    // off the document, not the wrapper.
+    const reloadBtn = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="stale-reload"]',
+    );
+    expect(reloadBtn).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="stale-keep"]')).not.toBeNull();
+
+    // Reload pulls the server-side schema into the buffer and refreshes
+    // the optimistic-lock token; the next save must use the new value.
+    reloadBtn?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(textarea.element.value).toContain('Server-side wins');
+    expect(document.body.querySelector('[data-testid="stale-reload"]')).toBeNull();
+
+    vi.mocked(client.templateVersions.update).mockResolvedValueOnce({
+      ...sampleVersion('draft'),
+      schema: serverSchema,
+      updatedAt: '2026-05-13T12:30:00.000Z',
+    });
+    await textarea.setValue(`${textarea.element.value} `); // dirty again
+    await wrapper.get('[data-testid="save-version"]').trigger('click');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(client.templateVersions.update).toHaveBeenLastCalledWith(
+      TPL_ID,
+      V_ID,
+      expect.objectContaining({ expectedUpdatedAt: '2026-05-13T12:00:00.000Z' }),
+    );
+  });
+
   it('reloads and shows a warn toast when a save returns 409 VERSION_NOT_DRAFT', async () => {
     const { useApiClient } = await import('../src/api/client.ts');
     const client = useApiClient();

@@ -123,12 +123,14 @@ describe('templateVersions api', () => {
 
     const result = await client.templateVersions.update(TEMPLATE_ID, VERSION_ID, {
       schema: { version: 1, title: 'Edited', sections: [] },
+      expectedUpdatedAt: '2026-05-12T10:00:00.000Z',
     });
 
     expect(result.schema).toEqual({ version: 1, title: 'Edited', sections: [] });
     const call = calls[0];
     if (!call) throw new Error('expected one fetch call');
     expect(call.init.method).toBe('PATCH');
+    expect(JSON.parse(call.init.body as string).expectedUpdatedAt).toBe('2026-05-12T10:00:00.000Z');
   });
 
   it('POST publish/archive/promote hit their respective sub-paths', async () => {
@@ -180,11 +182,41 @@ describe('templateVersions api', () => {
     try {
       await client.templateVersions.update(TEMPLATE_ID, VERSION_ID, {
         schema: { version: 1, title: 'X', sections: [] },
+        expectedUpdatedAt: '2026-05-12T10:00:00.000Z',
       });
       throw new Error('expected reject');
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).code).toBe('VERSION_NOT_DRAFT');
+    }
+  });
+
+  it('surfaces ApiError on 409 STALE_VERSION with currentUpdatedAt + currentSchema details', async () => {
+    const currentSchema = { version: 1, title: 'Server-side', sections: [] };
+    const currentUpdatedAt = '2026-05-13T15:30:00.000Z';
+    const fetchImpl = makeFetch(
+      new Response(
+        JSON.stringify({
+          code: 'STALE_VERSION',
+          message: 'version was modified since it was loaded',
+          details: { currentUpdatedAt, currentSchema },
+        }),
+        { status: 409, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const client = createApiClient({ baseUrl: '/api', fetch: fetchImpl });
+
+    try {
+      await client.templateVersions.update(TEMPLATE_ID, VERSION_ID, {
+        schema: { version: 1, title: 'Local', sections: [] },
+        expectedUpdatedAt: '2026-05-13T15:00:00.000Z',
+      });
+      throw new Error('expected reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      const apiErr = err as ApiError;
+      expect(apiErr.code).toBe('STALE_VERSION');
+      expect(apiErr.details).toEqual({ currentUpdatedAt, currentSchema });
     }
   });
 

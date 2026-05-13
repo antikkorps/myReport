@@ -134,6 +134,7 @@ async function onSave(): Promise<void> {
   try {
     const updated = await client.templateVersions.update(template.value.id, version.value.id, {
       schema: parsed,
+      expectedUpdatedAt: version.value.updatedAt,
     });
     version.value = updated;
     const reserialised = JSON.stringify(updated.schema, null, 2);
@@ -158,6 +159,24 @@ async function onSave(): Promise<void> {
         life: 5000,
       });
       await load();
+    } else if (err instanceof ApiError && err.code === 'STALE_VERSION') {
+      // Two tabs edited the same draft. Surface the server-side state
+      // in a Dialog so the user picks between reloading (discard local
+      // edits) and keeping the local buffer (they can manually copy
+      // their work before forcing a reload).
+      const currentUpdatedAt = err.details?.['currentUpdatedAt'];
+      const currentSchema = err.details?.['currentSchema'];
+      if (
+        typeof currentUpdatedAt === 'string' &&
+        typeof currentSchema === 'object' &&
+        currentSchema !== null &&
+        !Array.isArray(currentSchema)
+      ) {
+        staleConflict.value = {
+          currentUpdatedAt,
+          currentSchema: currentSchema as Record<string, unknown>,
+        };
+      }
     } else {
       toast.add({
         severity: 'error',
@@ -169,6 +188,38 @@ async function onSave(): Promise<void> {
   } finally {
     saving.value = false;
   }
+}
+
+// ---------------------------------------------------------------------
+// Stale version conflict (optimistic-lock 409)
+// ---------------------------------------------------------------------
+
+const staleConflict = ref<{
+  currentUpdatedAt: string;
+  currentSchema: Record<string, unknown>;
+} | null>(null);
+
+function reloadStale(): void {
+  if (!staleConflict.value || !version.value) return;
+  const reserialised = JSON.stringify(staleConflict.value.currentSchema, null, 2);
+  version.value = {
+    ...version.value,
+    schema: staleConflict.value.currentSchema,
+    updatedAt: staleConflict.value.currentUpdatedAt,
+  };
+  buffer.value = reserialised;
+  initialBuffer.value = reserialised;
+  validationIssues.value = [];
+  staleConflict.value = null;
+  toast.add({
+    severity: 'info',
+    summary: 'Version rechargée',
+    life: 3000,
+  });
+}
+
+function dismissStale(): void {
+  staleConflict.value = null;
 }
 
 // ---------------------------------------------------------------------
@@ -486,6 +537,36 @@ function onFormat(): void {
           :loading="lifecycleSubmitting"
           :disabled="lifecycleSubmitting"
           @click="confirmLifecycle"
+        />
+      </template>
+    </Dialog>
+
+    <!-- Optimistic-lock conflict dialog (PR 4d) -->
+    <Dialog
+      :visible="staleConflict !== null"
+      modal
+      :closable="false"
+      header="Version modifiée ailleurs"
+      :style="{ width: '32rem' }"
+      data-testid="stale-conflict-dialog"
+    >
+      <p class="text-sm">
+        Cette version a été enregistrée depuis un autre onglet ou un autre utilisateur
+        depuis votre dernier chargement. Si vous rechargez, vos modifications locales seront
+        perdues.
+      </p>
+      <template #footer>
+        <Button
+          label="Garder mes modifs"
+          text
+          data-testid="stale-keep"
+          @click="dismissStale"
+        />
+        <Button
+          label="Recharger"
+          severity="danger"
+          data-testid="stale-reload"
+          @click="reloadStale"
         />
       </template>
     </Dialog>

@@ -49,10 +49,16 @@ export type CreateQuestionnaireTemplateVersionRequest = Static<
   typeof TBCreateQuestionnaireTemplateVersionRequest
 >;
 
-// Same body shape as create — both reuse the DSL-validation path.
+// Update body carries an optimistic concurrency token. The client
+// must echo back the `updatedAt` it observed when loading the version
+// (string equality of the ISO encoding is not enough — the route
+// compares via `Date.getTime()` to stay format-agnostic). A mismatch
+// returns 409 `STALE_VERSION` so two tabs cannot silently overwrite
+// each other on the same draft.
 export const TBUpdateQuestionnaireTemplateVersionRequest = Type.Object(
   {
     schema: TBQuestionnaireSchemaBody,
+    expectedUpdatedAt: TBIsoDateTime,
   },
   { additionalProperties: false },
 );
@@ -60,6 +66,7 @@ export const TBUpdateQuestionnaireTemplateVersionRequest = Type.Object(
 export const ZUpdateQuestionnaireTemplateVersionRequest = z
   .object({
     schema: ZQuestionnaireSchemaBody,
+    expectedUpdatedAt: ZIsoDateTime,
   })
   .strict();
 
@@ -150,3 +157,27 @@ export const ZQuestionnaireSchemaValidationError = z.object({
 export type QuestionnaireSchemaValidationError = Static<
   typeof TBQuestionnaireSchemaValidationError
 >;
+
+// Structured 409 payload for the optimistic-lock conflict. `details`
+// carries the server-side state at the moment of conflict so the
+// client can either reload outright or render a diff against the
+// local buffer before discarding edits.
+export const TBStaleVersionError = Type.Object({
+  code: Type.Literal('STALE_VERSION'),
+  message: Type.String(),
+  details: Type.Object({
+    currentUpdatedAt: TBIsoDateTime,
+    currentSchema: TBQuestionnaireSchemaBody,
+  }),
+});
+
+export const ZStaleVersionError = z.object({
+  code: z.literal('STALE_VERSION'),
+  message: z.string(),
+  details: z.object({
+    currentUpdatedAt: ZIsoDateTime,
+    currentSchema: ZQuestionnaireSchemaBody,
+  }),
+});
+
+export type StaleVersionError = Static<typeof TBStaleVersionError>;
