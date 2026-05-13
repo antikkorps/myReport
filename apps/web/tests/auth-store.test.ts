@@ -17,6 +17,13 @@ const invitations = {
   revoke: vi.fn(),
   accept: vi.fn(),
 };
+const templates = {
+  create: vi.fn(),
+  list: vi.fn(),
+  get: vi.fn(),
+  update: vi.fn(),
+  remove: vi.fn(),
+};
 const ensureRefresh = vi.fn();
 const apiClient: ApiClient = {
   auth,
@@ -25,6 +32,7 @@ const apiClient: ApiClient = {
   users,
   memberships,
   invitations,
+  templates,
   ensureRefresh,
 };
 const scheduler: RefreshScheduler = {

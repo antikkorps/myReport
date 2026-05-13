@@ -23,6 +23,13 @@ vi.mock('../src/api/client.ts', () => {
     revoke: vi.fn(),
     accept: vi.fn(),
   };
+  const templates = {
+    create: vi.fn(),
+    list: vi.fn(),
+    get: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+  };
   const client: ApiClient = {
     auth,
     me,
@@ -30,6 +37,7 @@ vi.mock('../src/api/client.ts', () => {
     users,
     memberships,
     invitations,
+    templates,
     ensureRefresh: vi.fn().mockResolvedValue('token'),
   };
   const scheduler: RefreshScheduler = {

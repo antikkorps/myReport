@@ -8,6 +8,13 @@ const tenants = { create: vi.fn(), list: vi.fn() };
 const users = { list: vi.fn() };
 const memberships = { update: vi.fn(), remove: vi.fn() };
 const invitations = { create: vi.fn(), list: vi.fn(), revoke: vi.fn(), accept: vi.fn() };
+const templates = {
+  create: vi.fn(),
+  list: vi.fn(),
+  get: vi.fn(),
+  update: vi.fn(),
+  remove: vi.fn(),
+};
 const apiClient: ApiClient = {
   auth,
   me,
@@ -15,6 +22,7 @@ const apiClient: ApiClient = {
   users,
   memberships,
   invitations,
+  templates,
   ensureRefresh: vi.fn(),
 };
 const scheduler: RefreshScheduler = { schedule: vi.fn(), cancel: vi.fn() };

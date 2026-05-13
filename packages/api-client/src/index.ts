@@ -3,6 +3,7 @@ import { type AuthApi, createAuthApi } from './routes/auth.ts';
 import { createInvitationsApi, type InvitationsApi } from './routes/invitations.ts';
 import { createMeApi, type MeApi } from './routes/me.ts';
 import { createMembershipsApi, type MembershipsApi } from './routes/memberships.ts';
+import { createTemplatesApi, type TemplatesApi } from './routes/templates.ts';
 import { createTenantsApi, type TenantsApi } from './routes/tenants.ts';
 import { createUsersApi, type UsersApi } from './routes/users.ts';
 
@@ -18,6 +19,7 @@ export type { AuthApi } from './routes/auth.ts';
 export type { InvitationsApi, InvitationsListQuery } from './routes/invitations.ts';
 export type { MeApi } from './routes/me.ts';
 export type { MembershipsApi } from './routes/memberships.ts';
+export type { TemplatesApi } from './routes/templates.ts';
 export type { TenantsApi } from './routes/tenants.ts';
 export type { UsersApi } from './routes/users.ts';
 
@@ -28,6 +30,7 @@ export interface ApiClient {
   users: UsersApi;
   memberships: MembershipsApi;
   invitations: InvitationsApi;
+  templates: TemplatesApi;
   // Forces a silent refresh. Used by the host to bootstrap auth on app
   // load (try /auth/refresh; if it works, follow up with /me to
   // hydrate the store).
@@ -43,6 +46,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     users: createUsersApi(core),
     memberships: createMembershipsApi(core),
     invitations: createInvitationsApi(core),
+    templates: createTemplatesApi(core),
     ensureRefresh: () => core.ensureRefresh(),
   };
 }
