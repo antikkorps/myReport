@@ -8,6 +8,10 @@ updates:
       time: "06:00"
       timezone: Europe/Paris
     open-pull-requests-limit: 10
+    # Project-wide 90-day supply-chain delay (see CLAUDE.md). Security
+    # Updates bypass this and still open immediately on GHSA advisories.
+    cooldown:
+      default-days: 90
     groups:
       types:
         patterns:
