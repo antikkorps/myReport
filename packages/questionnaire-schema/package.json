@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@myreport/shared-schemas": "workspace:*",
-    "@sinclair/typebox": "0.34.49"
+    "@sinclair/typebox": "0.34.52"
   },
   "devDependencies": {
     "vitest": "4.1.6"
